@@ -550,11 +550,20 @@ function sinalAtivo(d){
   if(!d || !d.tracking || !d.tracking.trackedAt) return false;
   return (Date.now() - d.tracking.trackedAt) < SINAL_MINUTOS*60000;
 }
+/* Regra do dono (14/08/2026): se o motorista ficar fora do rastreio (sem sinal do Ca2Track)
+   por mais de 5 horas, o card pode ser jogado direto pra Finalizado — provavelmente já
+   descarregou e desligou o rastreador, ou saiu de área de cobertura de vez. */
+const HORAS_SEM_SINAL_FINALIZA = 5;
+function semSinalHaHoras(d, horas){
+  if(!d || !d.tracking || !d.tracking.trackedAt) return false;
+  return (Date.now() - d.tracking.trackedAt) >= horas*3600000;
+}
 function textoSinal(d){
   if(!d.tracking || !d.tracking.trackedAt) return "Sem sinal — nenhuma posição recebida ainda";
   const min = Math.floor((Date.now() - d.tracking.trackedAt)/60000);
   if(min < SINAL_MINUTOS) return "Sinal ativo — última posição " + (min<1 ? "agora" : "há "+min+" min");
-  return "Sem sinal " + timeAgo(d.tracking.trackedAt).replace(" atrás","") + " atrás — pode ter descarregado e desligado, ou o rastreador está sem comunicação";
+  const base = "Sem sinal " + timeAgo(d.tracking.trackedAt).replace(" atrás","") + " atrás — pode ter descarregado e desligado, ou o rastreador está sem comunicação";
+  return semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA) ? base + " (mais de "+HORAS_SEM_SINAL_FINALIZA+"h — finalizado automaticamente)" : base;
 }
 const GENERICAS = new Set(["atacadista","atacado","comercio","comercial","alimentos","alimenticios",
   "alimentacao","distribuidora","distribuicao","importadora","produtos","ltda","brasil","sociedade",
@@ -622,6 +631,7 @@ function entregaNaReferencia(d){
 }
 function statusAutomatico(d){
   if(d.semNf) return "finalizado";
+  if((d.status==="em_rota" || d.status==="no_cliente") && semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return "finalizado";
   if(entregaNaReferencia(d) >= 0) return "no_cliente";
   if(d.tracking) return "em_rota";
   return d.status;
