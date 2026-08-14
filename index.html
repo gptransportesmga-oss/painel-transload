@@ -199,6 +199,8 @@
   .hcard{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:10px}
   .hcard.prob{border:1.5px solid var(--alert)}
   .pill{font-size:11px;padding:2px 6px;border-radius:5px;color:#fff;font-weight:600}
+  /* Botao "Importar rastreamento" oculto: a API do CA2Track ja importa sozinha (pedido do dono, 14/08/2026). Para reativar, apague a linha abaixo. */
+  #btnImp,#btnVoz{display:none}
 </style>
 </head>
 <body>
@@ -2144,6 +2146,200 @@ try{
   __blindarBusca();
   document.addEventListener("DOMContentLoaded", __blindarBusca);
   setTimeout(__blindarBusca, 3000);
+}catch(e){}
+
+</script>
+<script>
+/* Extensao TRANSLOAD 5: historico de temperatura + relatorios/indicadores + avisos no navegador (14/08/2026) */
+try{
+var _dirtyTH=false;
+
+function _fmtDur(ms){
+var m=Math.floor(ms/60000);
+if(m<1) return "0 min";
+if(m<60) return m+" min";
+return Math.floor(m/60)+"h"+String(m%60).padStart(2,"0");
+}
+function _tkey(e){ return slug((e.cliente||"")+" "+(e.destino||"")); }
+
+/* ---- 1) amostragem de temperatura (linha do tempo por veiculo) ---- */
+function _amostrarTemp(){
+if(typeof S==="undefined" || !Array.isArray(S.drivers)) return;
+var agora=Date.now();
+S.drivers.forEach(function(d){
+var t=d && d.tracking;
+if(!t || !t.temps || !t.temps.length) return;
+d.tempHist=d.tempHist||[];
+var last=d.tempHist[d.tempHist.length-1];
+var mudou = !last || (agora-last.t>=110000) || (JSON.stringify(last.v)!==JSON.stringify(t.temps));
+if(mudou){
+d.tempHist.push({t:agora, v:t.temps.slice()});
+if(d.tempHist.length>150) d.tempHist=d.tempHist.slice(-150);
+if(typeof touch==="function") touch(d);
+_dirtyTH=true;
+}
+});
+if(_dirtyTH){ _dirtyTH=false; if(typeof save==="function") save(); }
+}
+
+/* ---- 2) avisos no navegador ---- */
+var _notif={};
+function _checarAvisos(){
+if(typeof S==="undefined") return;
+if(!(typeof Notification!=="undefined") || Notification.permission!=="granted") return;
+(S.drivers||[]).forEach(function(d){
+if(!d) return;
+var quente = emAlerta(d, S.tempLimite);
+if(quente && !_notif[d.id]){
+_notif[d.id]=true;
+try{ new Notification("🌡 Temperatura alta", { body:(d.motorista||"")+" ("+(d.placa||"")+") acima de "+S.tempLimite+"°C", tag:"temp-"+d.id }); }catch(e){}
+} else if(!quente){ _notif[d.id]=false; }
+});
+}
+
+/* ---- 3) agregacao para relatorios (funcao pura, testavel) ---- */
+function _agregar(drivers, arquivo, agora){
+var todos=(drivers||[]).concat(arquivo||[]);
+var nomes={}; /* slug -> "Cliente — destino" legivel */
+todos.forEach(function(d){
+(d.entregas||[]).forEach(function(e){
+nomes[_tkey(e)] = (e.cliente||"") + (e.destino? " — "+e.destino : "");
+});
+});
+var porCliente={};
+todos.forEach(function(d){
+var t=d.tempos||{};
+Object.keys(t).forEach(function(k){
+var reg=t[k]||{};
+var ms=(reg.total||0)+(reg.desde? (agora-reg.desde):0);
+if(ms<=0) return;
+if(!porCliente[k]) porCliente[k]={ms:0, nome: nomes[k]||k, visitas:0};
+porCliente[k].ms+=ms; porCliente[k].visitas++;
+});
+});
+var clientes=Object.keys(porCliente).map(function(k){return porCliente[k];}).sort(function(a,b){return b.ms-a.ms;});
+var porMot={};
+todos.forEach(function(d){
+if(!d || !d.motorista) return;
+var l=d.entregas||[];
+if(!porMot[d.motorista]) porMot[d.motorista]={motorista:d.motorista, total:0, feitas:0};
+porMot[d.motorista].total+=l.length;
+porMot[d.motorista].feitas+=l.filter(function(e){return e.concluida;}).length;
+});
+var motoristas=Object.keys(porMot).map(function(k){return porMot[k];}).sort(function(a,b){return b.feitas-a.feitas;});
+return {clientes:clientes, motoristas:motoristas};
+}
+
+/* ---- 4) resumo de temperatura de um veiculo (funcao pura) ---- */
+function _resumoTemp(hist){
+var vals=[];
+(hist||[]).forEach(function(s){ (s.v||[]).forEach(function(x){ if(typeof x==="number") vals.push(x); }); });
+if(!vals.length) return null;
+var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
+return {min:min, max:max, avg:Math.round(avg*10)/10, amostras:(hist||[]).length};
+}
+
+/* ---- 5) CSV (funcao pura) ---- */
+function _csv(drivers, arquivo, agora){
+var todos=(drivers||[]).concat(arquivo||[]);
+var linhas=[["Motorista","Placa","Cliente","Destino","Tempo no cliente (min)","Entrega concluida"]];
+todos.forEach(function(d){
+(d.entregas||[]).forEach(function(e){
+var reg=(d.tempos||{})[_tkey(e)];
+var min = reg ? Math.round(((reg.total||0)+(reg.desde?(agora-reg.desde):0))/60000) : "";
+linhas.push([d.motorista||"", d.placa||"", e.cliente||"", e.destino||"", min, e.concluida?"sim":"nao"]);
+});
+});
+return linhas.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(","); }).join("\n");
+}
+
+/* exporta para teste em node */
+if(typeof module!=="undefined" && module.exports){
+module.exports={_agregar:_agregar, _resumoTemp:_resumoTemp, _csv:_csv, _amostrarTemp:_amostrarTemp};
+}
+
+/* ---- 6) UI (so no navegador) ---- */
+if(typeof document!=="undefined"){
+function _sparkline(hist){
+var pts=[];
+(hist||[]).forEach(function(s){
+var arr=(s.v||[]).filter(function(x){return typeof x==="number";});
+if(arr.length) pts.push(Math.max.apply(null,arr)); /* pega o sensor mais quente da amostra */
+});
+if(pts.length<2) return '<div style="color:var(--muted);font-size:12px">sem dados suficientes</div>';
+var min=Math.min.apply(null,pts), max=Math.max.apply(null,pts), W=520, H=90, pad=6;
+var rng=(max-min)||1;
+var d=pts.map(function(y,i){ var x=pad+i*(W-2*pad)/(pts.length-1); var yy=pad+(1-(y-min)/rng)*(H-2*pad); return (i?"L":"M")+x.toFixed(1)+" "+yy.toFixed(1); }).join(" ");
+var lim=(typeof S!=="undefined")?S.tempLimite:null;
+var yLim = lim!=null ? pad+(1-(lim-min)/rng)*(H-2*pad) : null;
+return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:90px;background:var(--bg);border:1px solid var(--line);border-radius:8px">'
++ (yLim!=null && lim>=min && lim<=max ? '<line x1="0" y1="'+yLim.toFixed(1)+'" x2="'+W+'" y2="'+yLim.toFixed(1)+'" stroke="#C64545" stroke-dasharray="4 4" stroke-width="1"/>' : '')
++ '<path d="'+d+'" fill="none" stroke="#2E6F9E" stroke-width="2"/></svg>';
+}
+function _abrirRelatorios(){
+if(typeof Notification!=="undefined" && Notification.permission==="default"){ try{ Notification.requestPermission(); }catch(e){} }
+var ag=_agregar(S.drivers, S.arquivo, Date.now());
+var emrota=(S.drivers||[]).filter(function(d){return d.status==="em_rota";}).length;
+var nocliente=(S.drivers||[]).filter(function(d){return d.status==="no_cliente";}).length;
+var quentes=(S.drivers||[]).filter(function(d){return emAlerta(d,S.tempLimite);}).length;
+var totEnt=(S.drivers||[]).reduce(function(a,d){return a+((d.entregas||[]).length);},0);
+var feitas=(S.drivers||[]).reduce(function(a,d){return a+((d.entregas||[]).filter(function(e){return e.concluida;}).length);},0);
+var comHist=(S.drivers||[]).filter(function(d){return d.tempHist&&d.tempHist.length;});
+var h='';
+h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">';
+[["Em rota",emrota],["No cliente",nocliente],["Em alerta °C",quentes],["Entregas",feitas+"/"+totEnt]].forEach(function(k){
+h+='<div style="background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 14px;min-width:110px"><div style="font-size:22px;font-weight:700" class="display">'+k[1]+'</div><div style="font-size:12px;color:var(--muted)">'+k[0]+'</div></div>';
+});
+h+='</div>';
+h+='<h4 style="margin:14px 0 6px">⏱ Tempo em cada cliente (maior primeiro)</h4>';
+if(!ag.clientes.length){ h+='<p style="color:var(--muted);font-size:13px">Ainda sem tempos registrados — aparece conforme os motoristas encostam nos clientes.</p>'; }
+else { h+='<div style="border:1px solid var(--line);border-radius:9px;overflow:hidden">'; ag.clientes.slice(0,20).forEach(function(c,i){ h+='<div style="display:flex;justify-content:space-between;padding:8px 12px;'+(i%2?'background:var(--bg)':'')+'"><span style="font-size:13px">'+esc(c.nome)+'</span><span style="font-weight:700;color:var(--route)">'+_fmtDur(c.ms)+(c.visitas>1?' <span style="color:var(--muted);font-weight:400">('+c.visitas+' visitas)</span>':'')+'</span></div>'; }); h+='</div>'; }
+h+='<h4 style="margin:18px 0 6px">📦 Entregas por motorista</h4>';
+h+='<div style="border:1px solid var(--line);border-radius:9px;overflow:hidden">';
+ag.motoristas.forEach(function(m,i){ h+='<div style="display:flex;justify-content:space-between;padding:8px 12px;'+(i%2?'background:var(--bg)':'')+'"><span style="font-size:13px">'+esc(m.motorista)+'</span><span style="font-weight:700">'+m.feitas+'/'+m.total+'</span></div>'; });
+h+='</div>';
+h+='<h4 style="margin:18px 0 6px">🌡 Temperatura por veículo</h4>';
+if(!comHist.length){ h+='<p style="color:var(--muted);font-size:13px">O histórico começa a ser gravado assim que o rastreio traz temperatura.</p>'; }
+else{
+h+='<select id="__relVeic" class="field" style="margin-bottom:8px">'+comHist.map(function(d,i){return '<option value="'+i+'">'+esc(d.motorista||d.placa)+' — '+esc(d.placa||"")+'</option>';}).join("")+'</select>';
+h+='<div id="__relTempBox"></div>';
+}
+var wrap=document.getElementById("__relModal");
+if(!wrap){ wrap=document.createElement("div"); wrap.id="__relModal"; document.body.appendChild(wrap); }
+wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px";
+wrap.innerHTML='<div style="background:var(--bg);max-width:720px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
++'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 class="display" style="margin:0">📊 RELATÓRIOS</h3><div><button id="__relCsv" class="btn btn-teal" style="margin-right:8px">⬇ Exportar (Excel)</button><button id="__relFechar" class="btn btn-ghost" style="background:var(--asphalt);color:#fff">Fechar</button></div></div>'
++h+'</div>';
+function pintaTemp(){
+var sel=document.getElementById("__relVeic"); if(!sel) return;
+var d=comHist[Number(sel.value)]; var r=_resumoTemp(d.tempHist);
+var box=document.getElementById("__relTempBox");
+box.innerHTML=_sparkline(d.tempHist)+(r?('<div style="display:flex;gap:14px;font-size:13px;margin-top:6px"><span>mín <b>'+r.min+'°C</b></span><span>máx <b style="color:'+(r.max>=S.tempLimite?'#C64545':'inherit')+'">'+r.max+'°C</b></span><span>média <b>'+r.avg+'°C</b></span><span style="color:var(--muted)">'+r.amostras+' leituras</span></div>'):'');
+}
+if(comHist.length){ pintaTemp(); document.getElementById("__relVeic").addEventListener("change",pintaTemp); }
+document.getElementById("__relFechar").addEventListener("click",function(){ wrap.style.display="none"; });
+wrap.addEventListener("click",function(e){ if(e.target===wrap) wrap.style.display="none"; });
+document.getElementById("__relCsv").addEventListener("click",function(){
+var csv=" "+_csv(S.drivers,S.arquivo,Date.now());
+var a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="relatorio-transload.csv"; document.body.appendChild(a); a.click(); a.remove();
+});
+}
+function _injetarBotao(){
+if(document.getElementById("__btnRel")) return;
+var alvo=document.getElementById("btnHist");
+if(!alvo) return;
+var b=document.createElement("button");
+b.id="__btnRel"; b.className=alvo.className; b.innerHTML="📊 Relatórios";
+b.addEventListener("click",_abrirRelatorios);
+alvo.parentNode.insertBefore(b, alvo.nextSibling);
+}
+if(typeof render==="function"){ var _r0=render; render=function(){ _r0(); try{ _injetarBotao(); }catch(e){} }; }
+setTimeout(_injetarBotao, 1500);
+setInterval(_amostrarTemp, 60000);
+setInterval(_checarAvisos, 60000);
+setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
+}
 }catch(e){}
 
 </script>
