@@ -554,6 +554,20 @@ function sinalAtivo(d){
    por mais de 5 horas, o card pode ser jogado direto pra Finalizado — provavelmente já
    descarregou e desligou o rastreador, ou saiu de área de cobertura de vez. */
 const HORAS_SEM_SINAL_FINALIZA = 5;
+/* Cronômetro da atualização automática BSoft (Claude, 14/08/2026): o próprio Claude grava em
+   S.proximaAtualizacaoBsoft o horário previsto do próximo ciclo (roda por fora, a cada 5 min,
+   via agendamento encadeado) — aqui só exibimos a contagem regressiva. */
+function textoProximaAtualizacaoBsoft(){
+  if(!S.proximaAtualizacaoBsoft) return null;
+  const rest = S.proximaAtualizacaoBsoft - Date.now();
+  if(rest > 0){
+    const m = Math.floor(rest/60000);
+    const s = String(Math.floor((rest%60000)/1000)).padStart(2,"0");
+    return { txt: "⏱ próxima atualização BSoft em " + m + ":" + s, cls: "dim" };
+  }
+  if(rest > -10*60000) return { txt: "⏱ atualizando BSoft…", cls: "dim" };
+  return { txt: "⏱ atualização automática BSoft pode estar parada", cls: "warn" };
+}
 function semSinalHaHoras(d, horas){
   if(!d || !d.tracking || !d.tracking.trackedAt) return false;
   return (Date.now() - d.tracking.trackedAt) >= horas*3600000;
@@ -968,6 +982,8 @@ function renderSub(){
     h += '<span class="dim">🔕 alerta silenciado por '+min+" min</span>";
   }
   if(S.lastImportAt) h += '<span class="dim">rastreio importado '+timeAgo(S.lastImportAt)+"</span>";
+  const prox = textoProximaAtualizacaoBsoft();
+  if(prox) h += '<span class="'+prox.cls+'">'+esc(prox.txt)+"</span>";
   if(!HAS_LS) h += '<span class="dim">(sem gravação neste modo — abra o arquivo salvo no PC)</span>';
   $("sub").innerHTML = h;
 }
@@ -1951,6 +1967,10 @@ function iniciarPainel(){
     if(S.editTracking || S.editEntregas) return;
     render();
   }, 60000);
+  setInterval(()=>{
+    if(S.editTracking || S.editEntregas) return;
+    renderSub();
+  }, 15000);
 }
 if(estaLogado()) abrirPainel();
 else setTimeout(()=>$("usr").focus(), 80);
