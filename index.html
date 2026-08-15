@@ -995,7 +995,7 @@ function cardHTML(d){
   const rz  = resumoEntregas(d);
   const prox= proximaEntregaIdx(d);
   const here= entregaNaReferencia(d);
-  let h = '<div class="card'+(d.problema?" prob":(hot?" hot":""))+'" style="background:'+st.fundo+';--boxbg:'+st.caixa+'">';
+  let h = '<div class="card'+(d.problema?" prob":(hot?" hot":""))+'" data-st="'+st.key+'" style="background:'+st.fundo+';--boxbg:'+st.caixa+'">';
   h += '<div class="cardtop"><div>';
   const on = sinalAtivo(d);
   h += '<p class="drv"><span class="sinal '+(on?"on":"off")+'" title="'+esc(textoSinal(d))+'"></span>'+esc(d.motorista)+"</p>";
@@ -2031,9 +2031,13 @@ html[data-tema="escuro"]{
   --bg:#12151A; --card:#1B1F27; --ink:#E9E7E2; --muted:#9A958B; --line:#2B303A;
 }
 html[data-tema="escuro"] body{ background:var(--bg); color:var(--ink); }
-html[data-tema="escuro"] .card{
-  background:#1B1F27 !important; --boxbg:#262C37 !important; color:var(--ink);
-}
+html[data-tema="escuro"] .card{ color:var(--ink); }
+/* cada status mantem a sua cor, em versao escura */
+html[data-tema="escuro"] .card[data-st="carregando"]{ background:#2E2417 !important; --boxbg:#3E3120 !important; }
+html[data-tema="escuro"] .card[data-st="em_rota"]   { background:#16232F !important; --boxbg:#1E3242 !important; }
+html[data-tema="escuro"] .card[data-st="no_cliente"]{ background:#241F30 !important; --boxbg:#322B44 !important; }
+html[data-tema="escuro"] .card[data-st="finalizado"]{ background:#152A1D !important; --boxbg:#1D3B28 !important; }
+html[data-tema="escuro"] .card:not([data-st]){ background:#1B1F27 !important; --boxbg:#262C37 !important; }
 html[data-tema="escuro"] input:not(.field):not([type=checkbox]),
 html[data-tema="escuro"] select:not(.field),
 html[data-tema="escuro"] textarea{
