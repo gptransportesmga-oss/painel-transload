@@ -1988,6 +1988,34 @@ else setTimeout(()=>$("usr").focus(), 80);
   else setTimeout(init,0);
 })();
 </script>
+<script>
+/* Cronometro do BSoft: sobrevive a recarregar/fechar a pagina (15/08/2026) */
+(function(){
+  var K="painel-viagens-prox-bsoft", pronto=false;
+  var t=setInterval(function(){
+    if(typeof S==="undefined"||!S) return;
+    try{
+      var v=localStorage.getItem(K), n=v?Number(v):0;
+      if(isFinite(n)&&n>Date.now()) S.proximaAtualizacaoBsoft=n;
+    }catch(e){}
+    pronto=true; clearInterval(t);
+    if(typeof render==="function"){ try{ render(); }catch(e){} }
+  },200);
+  setInterval(function(){
+    if(!pronto) return;
+    try{
+      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
+        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
+    }catch(e){}
+  },3000);
+  window.addEventListener("beforeunload",function(){
+    try{
+      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
+        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
+    }catch(e){}
+  });
+})();
+</script>
 </body>
 <script>
 /* Extensao TRANSLOAD: usuarios acompanham o quadro compartilhado (pedido do dono, 14/08/2026) */
