@@ -2466,4 +2466,76 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 }catch(e){}
 
 </script>
+<script>
+/* ===== PATCH_PROXIMIDADE v1 — raio de 200 m + anti-oscilacao ===== */
+(function(){
+  if (window.__PATCH_PROXIMIDADE) return;
+  if (typeof statusAutomatico !== "function") return;
+  window.RAIO_CLIENTE_M = 200;
+  window.RAIO_SAIDA_M   = 400;
+  window.VEL_PARADO_KMH = 5;
+  window.CICLOS_P_SAIR  = 2;
+  window.distanciaRefMetros = function(ref){
+    if(!ref) return null;
+    var s = String(ref).trim();
+    var m = s.match(/([\d.,]+)\s*(km|m)\b/i);
+    if(!m) return /^em\s/i.test(s) ? 0 : null;
+    var n = parseFloat(m[1].replace(/\./g,"").replace(",","."));
+    if(isNaN(n)) return null;
+    return /km/i.test(m[2]) ? n*1000 : n;
+  };
+  var orig = statusAutomatico;
+  window.__statusAutomaticoOrig = orig;
+  window.statusAutomatico = function(d){
+    var st = orig(d);
+    var tr = (d && d.tracking) || null;
+    if(!tr) return st;
+    var vel  = Number(tr.velocidade || 0);
+    var dist = window.distanciaRefMetros(tr.referencia || tr.posicao);
+    var ant  = d.status;
+    if(st === "no_cliente" && ant !== "no_cliente" && dist !== null && dist > RAIO_CLIENTE_M) return "em_rota";
+    if(ant === "no_cliente" && dist !== null && dist > RAIO_SAIDA_M && vel > VEL_PARADO_KMH){
+      d._saiuCli = 0; return st === "no_cliente" ? "em_rota" : st;
+    }
+    if(ant === "no_cliente" && st !== "no_cliente" && st !== "finalizado"){
+      var perto = (dist === null) || (dist <= RAIO_SAIDA_M);
+      if(perto && vel <= VEL_PARADO_KMH){ d._saiuCli = 0; return "no_cliente"; }
+      d._saiuCli = (d._saiuCli||0) + 1;
+      if(d._saiuCli < CICLOS_P_SAIR) return "no_cliente";
+      d._saiuCli = 0;
+      return st;
+    }
+    if(st === "no_cliente") d._saiuCli = 0;
+    return st;
+  };
+  window.__PATCH_PROXIMIDADE = "v1";
+})();
+</script>
+<script>
+/* ===== PATCH_CRONOMETRO v1 — cronometro que nao some =====
+   O contador dependia de um agente externo gravar S.proximaAtualizacaoBsoft.
+   Sem isso ele expirava e o texto sumia. Agora ele se renova sozinho.        */
+(function(){
+  if (window.__PATCH_CRONO) return;
+  if (typeof textoProximaAtualizacaoBsoft !== "function") return;
+  window.INTERVALO_BSOFT_MIN = 60;
+  var orig = textoProximaAtualizacaoBsoft;
+  window.__textoProxOrig = orig;
+  window.textoProximaAtualizacaoBsoft = function(){
+    var agora = Date.now();
+    var p = S.proximaAtualizacaoBsoft;
+    if(!p || p <= agora){
+      var passo = (window.INTERVALO_BSOFT_MIN||60)*60000;
+      var base = p || agora;
+      while(base <= agora) base += passo;
+      S.proximaAtualizacaoBsoft = base;
+    }
+    return orig();
+  };
+  if(!S.proximaAtualizacaoBsoft || S.proximaAtualizacaoBsoft <= Date.now()){
+    S.proximaAtualizacaoBsoft = Date.now() + (window.INTERVALO_BSOFT_MIN||60)*60000;
+  }
+  window.__PATCH_CRONO = "v1";
+})();
+</script>
 </html>
