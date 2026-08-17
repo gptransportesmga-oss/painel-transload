@@ -2817,4 +2817,85 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   setTimeout(puxarFotos, 1500);
 })();
 </script>
+<script>
+/* PATCH_RELPLACA v1 — mostra placa e motorista embaixo de cada cliente em "Tempo em cada
+   cliente" no relatorio. Nao mexe na agregacao original, so injeta uma linha extra depois que
+   o relatorio renderiza. Para desfazer, apague este bloco. */
+(function(){
+  if (window.__PATCH_RELPLACA) return;
+  window.__PATCH_RELPLACA = "v1";
+
+  function calcularQuem(){
+    var todos = (S.drivers||[]).concat(S.arquivo||[]);
+    var nomes = {};
+    todos.forEach(function(d){
+      (d.entregas||[]).forEach(function(e){
+        nomes[_tkey(e)] = (e.cliente||"") + (e.destino ? " — "+e.destino : "");
+      });
+    });
+    var quemPorKey = {};
+    todos.forEach(function(d){
+      var t = d.tempos||{};
+      Object.keys(t).forEach(function(k){
+        var reg = t[k]||{};
+        var ms = (reg.total||0) + (reg.desde ? (Date.now()-reg.desde) : 0);
+        if(ms<=0) return;
+        if(!quemPorKey[k]) quemPorKey[k] = {};
+        var placa = d.placa || "?";
+        if(!quemPorKey[k][placa]) quemPorKey[k][placa] = {placa: placa, motorista: d.motorista||"", ms:0};
+        quemPorKey[k][placa].ms += ms;
+      });
+    });
+    var porNome = {};
+    Object.keys(quemPorKey).forEach(function(k){
+      var nome = nomes[k] || k;
+      var lista = Object.keys(quemPorKey[k]).map(function(p){ return quemPorKey[k][p]; });
+      lista.sort(function(a,b){ return b.ms - a.ms; });
+      porNome[nome] = lista;
+    });
+    return porNome;
+  }
+  window.__quemPorCliente = calcularQuem;
+
+  function injetar(){
+    var wrap = document.getElementById("__relModal");
+    if(!wrap) return;
+    var h4s = wrap.querySelectorAll("h4");
+    var alvo = null;
+    for (var i=0;i<h4s.length;i++){ if(/Tempo em cada cliente/i.test(h4s[i].textContent)){ alvo = h4s[i]; break; } }
+    if(!alvo) return;
+    var box = alvo.nextElementSibling;
+    if(!box) return;
+    var linhas = box.querySelectorAll(":scope > div");
+    if(!linhas.length) return;
+    var porNome = calcularQuem();
+    linhas.forEach(function(linha){
+      if(linha.getAttribute("data-relplaca")) return;
+      var spanNome = linha.querySelector("span");
+      if(!spanNome) return;
+      var nome = spanNome.textContent;
+      var quem = porNome[nome];
+      linha.setAttribute("data-relplaca","1");
+      if(!quem || !quem.length) return;
+      var texto = quem.slice(0,3).map(function(q){ return (q.placa||"?") + " — " + (q.motorista||"?"); }).join(" · ");
+      if(quem.length > 3) texto += " +" + (quem.length-3);
+      spanNome.appendChild(document.createElement("br"));
+      var span2 = document.createElement("span");
+      span2.style.cssText = "font-size:11px;color:var(--muted);font-weight:400";
+      span2.textContent = texto;
+      spanNome.appendChild(span2);
+    });
+  }
+
+  var orig = window._abrirRelatorios;
+  if (typeof orig === "function"){
+    window._abrirRelatorios = function(){
+      var r = orig.apply(this, arguments);
+      setTimeout(injetar, 30);
+      return r;
+    };
+  }
+  setInterval(injetar, 1500);
+})();
+</script>
 </html>
