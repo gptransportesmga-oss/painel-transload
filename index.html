@@ -2663,4 +2663,104 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
 })();
 </script>
+<script>
+/* PATCH_FOTOS v3 — foto do motorista no card + botao 📷 Foto para cadastrar/trocar.
+   IMPORTANTE: as fotos NAO ficam neste arquivo. O repositorio e publico; as imagens ficam
+   em S.fotos, dentro do quadro compartilhado. Para desfazer tudo, apague este bloco. */
+(function(){
+  if (window.__PATCH_FOTOS) return;
+  window.__PATCH_FOTOS = "v3";
+  var TAM = 38, LADO = 128, QUAL = 0.72;
+  function norm(s){ return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim(); }
+  window.normNome = norm;
+  window.fotoDe = function(nome){ var f = (typeof S !== "undefined" && S.fotos) || {}; return f[norm(nome)] || null; };
+  window.setFoto = function(nome, dataUrl){
+    if(typeof S === "undefined") return "sem estado";
+    if(!S.fotos) S.fotos = {};
+    if(dataUrl) S.fotos[norm(nome)] = dataUrl; else delete S.fotos[norm(nome)];
+    try{ save(); }catch(e){}
+    pintar();
+    return norm(nome) + (dataUrl ? " -> " + dataUrl.length + " bytes" : " -> removida");
+  };
+  function reduzir(file, cb){
+    var fr = new FileReader();
+    fr.onload = function(){
+      var im = new Image();
+      im.onload = function(){
+        var lado = Math.min(im.width, im.height);
+        var sx = (im.width - lado) / 2;
+        var sy = (im.height - lado) / 2 * 0.6;
+        var c = document.createElement("canvas"); c.width = LADO; c.height = LADO;
+        var g = c.getContext("2d"); g.imageSmoothingQuality = "high";
+        g.drawImage(im, sx, sy, lado, lado, 0, 0, LADO, LADO);
+        cb(c.toDataURL("image/jpeg", QUAL));
+      };
+      im.onerror = function(){ cb(null); };
+      im.src = fr.result;
+    };
+    fr.onerror = function(){ cb(null); };
+    fr.readAsDataURL(file);
+  }
+  window.escolherFoto = function(nome){
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*";
+    inp.style.cssText = "position:fixed;left:-9999px;top:0";
+    inp.onchange = function(){
+      var f = inp.files && inp.files[0];
+      if(!f){ inp.remove(); return; }
+      reduzir(f, function(url){
+        inp.remove();
+        if(!url){ alert("Nao consegui ler essa imagem."); return; }
+        window.setFoto(nome, url);
+      });
+    };
+    document.body.appendChild(inp);
+    inp.click();
+  };
+  function pintar(){
+    var cards = document.querySelectorAll(".card");
+    for(var i = 0; i < cards.length; i++){
+      var card = cards[i];
+      var topo = card.querySelector(".cardtop"); if(!topo) continue;
+      var p = topo.querySelector("p.drv"); if(!p) continue;
+      var nome = p.textContent.trim(); if(!nome) continue;
+      var url = window.fotoDe(nome);
+      var chave = nome + "|" + (url ? url.length : 0);
+      var ja = topo.querySelector(".fotoMot");
+      if(!ja || ja.getAttribute("data-k") !== chave){
+        if(ja) ja.remove();
+        var el;
+        if(url){
+          el = document.createElement("img");
+          el.src = url; el.alt = "";
+          el.title = nome + " \u2014 clique para remover a foto";
+          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;object-fit:cover;object-position:50% 22%;margin-right:9px;flex:0 0 auto;cursor:pointer;border:2px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08)";
+          el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); if(confirm("Remover a foto de " + n + "?")) window.setFoto(n, null); }; })(nome);
+        } else {
+          el = document.createElement("div");
+          el.textContent = "\uD83D\uDCF7";
+          el.title = "Adicionar foto de " + nome;
+          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;margin-right:9px;flex:0 0 auto;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;opacity:.5;border:2px dashed rgba(255,255,255,.3);background:rgba(255,255,255,.05)";
+          el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); window.escolherFoto(n); }; })(nome);
+        }
+        el.className = "fotoMot";
+        el.setAttribute("data-k", chave);
+        topo.insertBefore(el, topo.firstChild);
+      }
+      var linha = card.querySelector(".cardbtns");
+      if(linha && !linha.querySelector(".btnFoto")){
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "mini btnFoto";
+        b.textContent = "\uD83D\uDCF7 Foto";
+        b.onclick = (function(n){ return function(ev){ ev.preventDefault(); ev.stopPropagation(); window.escolherFoto(n); }; })(nome);
+        linha.appendChild(b);
+      }
+    }
+  }
+  window.pintarFotos = pintar;
+  function iniciar(){ pintar(); setInterval(pintar, 1500); }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+})();
+</script>
 </html>
