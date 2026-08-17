@@ -2763,4 +2763,58 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
 })();
 </script>
+<script>
+/* PATCH_FOTOS_SYNC v1 — faz as fotos do PATCH_FOTOS entrarem na sincronizacao do quadro
+   compartilhado (Supabase) e sobreviverem a um F5. Sem isto a foto ficava so na memoria da
+   aba e sumia ao recarregar. Precisa do PATCH_FOTOS ja instalado. Para desfazer, apague. */
+(function(){
+  if (window.__PATCH_FOTOS_SYNC) return;
+  window.__PATCH_FOTOS_SYNC = "v1";
+  var LS_KEY = "painel-viagens-fotos";
+  try {
+    var salvas = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    if (typeof S !== "undefined") S.fotos = Object.assign({}, salvas, S.fotos || {});
+  } catch(e){}
+  var origSetFoto = window.setFoto;
+  if (typeof origSetFoto === "function") {
+    window.setFoto = function(nome, dataUrl){
+      var r = origSetFoto(nome, dataUrl);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(S.fotos || {})); } catch(e){}
+      try { if (typeof enviarAoServidor === "function") enviarAoServidor(); } catch(e){}
+      return r;
+    };
+  }
+  if (typeof estadoLocal === "function") {
+    var origEstadoLocal = estadoLocal;
+    window.estadoLocal = function(){
+      var e = origEstadoLocal();
+      e.fotos = (typeof S !== "undefined" && S.fotos) || {};
+      return e;
+    };
+  }
+  function puxarFotos(){
+    try {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      var c = lerSync();
+      sbLer(c).then(function(linha){
+        if (linha && linha.dados && linha.dados.fotos) {
+          S.fotos = Object.assign({}, linha.dados.fotos, S.fotos || {});
+          try { localStorage.setItem(LS_KEY, JSON.stringify(S.fotos)); } catch(e){}
+          if (typeof pintarFotos === "function") pintarFotos();
+        }
+      }).catch(function(){});
+    } catch(e){}
+  }
+  if (typeof puxarDoServidor === "function") {
+    var origPuxar = puxarDoServidor;
+    window.puxarDoServidor = function(){
+      var p = origPuxar();
+      if (p && typeof p.then === "function") p.then(puxarFotos).catch(function(){});
+      else puxarFotos();
+      return p;
+    };
+  }
+  setTimeout(puxarFotos, 1500);
+})();
+</script>
 </html>
