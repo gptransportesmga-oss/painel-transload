@@ -2625,4 +2625,42 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   window.__PATCH_ENTREGAS = "v1";
 })();
 </script>
+<script>
+/* PATCH_CRONOPOS v1 — tira o cronômetro da barra de status e coloca logo abaixo do botão "Importar entregas". Para desfazer, basta apagar este bloco. */
+(function(){
+  if (window.__PATCH_CRONOPOS) return;
+  window.__PATCH_CRONOPOS = "v1";
+  var RX = /pr[o\u00f3]xima atualiza[c\u00e7][a\u00e3]o/i;
+  function slot(){
+    var btn = document.getElementById("btnImpEnt");
+    if(!btn) return null;
+    var w = document.getElementById("cronoSlot");
+    if(w && w.parentNode) return w;
+    var col = document.createElement("div");
+    col.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:3px";
+    btn.parentNode.insertBefore(col, btn);
+    col.appendChild(btn);
+    w = document.createElement("div");
+    w.id = "cronoSlot";
+    w.style.cssText = "font-size:11px;line-height:1.2;text-align:center;opacity:.8;min-height:13px;white-space:nowrap";
+    col.appendChild(w);
+    return w;
+  }
+  function mover(){
+    var w = slot(); if(!w) return;
+    var sub = document.getElementById("sub"); if(!sub) return;
+    var achou = null;
+    Array.prototype.forEach.call(sub.querySelectorAll("span"), function(s){ if(RX.test(s.textContent||"")) achou = s; });
+    if(achou){ var txt = achou.textContent.trim(); achou.remove(); if(w.textContent !== txt) w.textContent = txt; }
+  }
+  function iniciar(){
+    var sub = document.getElementById("sub");
+    if(!sub){ return setTimeout(iniciar, 500); }
+    mover();
+    new MutationObserver(mover).observe(sub, {childList:true, subtree:true, characterData:true});
+    setInterval(mover, 5000);
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+})();
+</script>
 </html>
