@@ -2898,12 +2898,97 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   setInterval(injetar, 1500);
 })();
 </script>
-   })();
-   </script>
-   <script>
-   /* PATCH_ESPELHAMENTO v1 ... */
-   (function(){
-     ...
-   })();
-   </script>
-   </html>
+<script>
+/* PATCH_ESPELHAMENTO v1 - sobe a placa pro quadro assim que ela reaparece no rastreio Ca2Track
+   depois de ficar sem transmitir (ou aparece pela primeira vez), em vez de esperar o ciclo do
+   BSoft (ate 1h). Entra como "carregando"; o proximo ciclo do BSoft preenche mdfe/entregas
+   normalmente. So dispara em cima de um gap de sinal - placa que fica transmitindo direto
+   nao entra, pra nao virar card fantasma. Estado guardado so no localStorage deste navegador. */
+(function(){
+  if (window.__PATCH_ESPELHAMENTO) return;
+  window.__PATCH_ESPELHAMENTO = "v1";
+  var LS_KEY = "painel-viagens-rastreio-visto";
+  var GAP_MS = 2*60*60*1000;
+  function carregarEstado(){
+    try{ var raw = localStorage.getItem(LS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    return { visto:{}, baseline:false };
+  }
+  function salvarEstado(st){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(st)); }catch(e){}
+  }
+  var estado = carregarEstado();
+  var cicloAtual = [];
+  var origMapear = window.mapearVeiculo;
+  if (typeof origMapear === "function"){
+    window.mapearVeiculo = function(o){
+      var r = origMapear(o);
+      if (r) cicloAtual.push(r);
+      return r;
+    };
+  }
+  function formatarPlaca(p){
+    return (p && p.length===7) ? (p.slice(0,3)+"-"+p.slice(3)) : p;
+  }
+  function processarEspelhamento(lista){
+    var agora = Date.now();
+    var primeiraVez = !estado.baseline;
+    var novos = [];
+    (lista||[]).forEach(function(v){
+      var p = v && v.placa;
+      if(!p) return;
+      var noQuadro = S.drivers.some(function(d){ return normalizePlaca(d.placa)===p; });
+      if(!noQuadro && !primeiraVez){
+        var visto = estado.visto[p];
+        if(!visto || (agora-visto) >= GAP_MS) novos.push(v);
+      }
+      estado.visto[p] = agora;
+    });
+    if(primeiraVez) estado.baseline = true;
+    salvarEstado(estado);
+    if(!novos.length) return;
+    novos.forEach(function(v){
+      var p = v.placa;
+      var idxArq = S.arquivo.findIndex(function(d){ return normalizePlaca(d.placa)===p; });
+      var motoristaFmt = (v.motorista||"").toUpperCase();
+      if(idxArq >= 0){
+        var restaurado = S.arquivo.splice(idxArq,1)[0];
+        restaurado.status = "carregando";
+        restaurado.bsoftAberto = false;
+        restaurado.semNf = false;
+        restaurado.tracking = v.tracking || null;
+        restaurado.updatedAt = agora;
+        if(!restaurado.motorista && motoristaFmt) restaurado.motorista = motoristaFmt;
+        S.drivers.unshift(restaurado);
+      } else {
+        S.drivers.unshift({
+          id: "d-"+agora+"-"+Math.floor(Math.random()*1000),
+          motorista: motoristaFmt,
+          placa: formatarPlaca(p),
+          mdfe: "",
+          status: "carregando",
+          problema: false,
+          obs: "criado automatico pelo rastreio - aguardando BSoft",
+          updatedAt: agora,
+          tracking: v.tracking || null,
+          entregas: [],
+          semNf: false,
+          bsoftAberto: false
+        });
+      }
+    });
+    save();
+    if (typeof aplicarStatusAuto === "function") aplicarStatusAuto();
+    render();
+  }
+  var origSincronizar = window.sincronizarApi;
+  if (typeof origSincronizar === "function"){
+    window.sincronizarApi = async function(){
+      cicloAtual = [];
+      var r = await origSincronizar.apply(this, arguments);
+      try { processarEspelhamento(cicloAtual); } catch(e){ console.error("[PATCH_ESPELHAMENTO]", e); }
+      return r;
+    };
+  }
+})();
+</script>
+</html>
