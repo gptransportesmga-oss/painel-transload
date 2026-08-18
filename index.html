@@ -2899,24 +2899,38 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 })();
 </script>
 <script>
-/* PATCH_ESPELHAMENTO v1 - sobe a placa pro quadro assim que ela reaparece no rastreio Ca2Track
-   depois de ficar sem transmitir (ou aparece pela primeira vez), em vez de esperar o ciclo do
-   BSoft (ate 1h). Entra como "carregando"; o proximo ciclo do BSoft preenche mdfe/entregas
-   normalmente. So dispara em cima de um gap de sinal - placa que fica transmitindo direto
-   nao entra, pra nao virar card fantasma. Estado guardado so no localStorage deste navegador. */
+/* PATCH_ESPELHAMENTO v2 - sobe a placa pro quadro assim que ela aparece no rastreio Ca2Track e
+   ainda nao esta no quadro, em vez de esperar o ciclo do BSoft (ate 1h). Entra como "carregando";
+   o proximo ciclo do BSoft preenche mdfe/entregas normalmente.
+   v2 (18/08/2026): a v1 guardava "ultima vez que vi essa placa" so no localStorage do navegador
+   que estivesse aberto na hora - como o painel roda em varios computadores, uma placa podia
+   aparecer sem que o navegador certo estivesse com o ciclo rodando naquele momento, e nunca
+   subir (foi o que aconteceu com a MIZ-0858, ficou de fora). Agora:
+   - Placa que NUNCA existiu no quadro nem no historico (S.arquivo) sobe direto, sempre, de
+     qualquer computador - sem risco de virar fantasma, porque nunca teve viagem antes.
+   - Placa que ja tem viagem finalizada no historico so sobe de novo depois de um gap real de
+     sinal (fica sem transmitir e volta) - e o "ultima vez visto" agora fica em S.rastreioVisto,
+     que sincroniza pelo Supabase junto com os motoristas, entao funciona em qualquer computador
+     que tenha o painel aberto, nao so o que capturou o gap. */
 (function(){
-  if (window.__PATCH_ESPELHAMENTO) return;
-  window.__PATCH_ESPELHAMENTO = "v1";
+  if (window.__PATCH_ESPELHAMENTO === "v2") return;
+  window.__PATCH_ESPELHAMENTO = "v2";
   var LS_KEY = "painel-viagens-rastreio-visto";
   var GAP_MS = 2*60*60*1000;
-  function carregarEstado(){
-    try{ var raw = localStorage.getItem(LS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
-    return { visto:{}, baseline:false };
+
+  if (typeof S !== "undefined" && !S.rastreioVisto) {
+    S.rastreioVisto = {};
+    try {
+      var salvo = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      var mapa = (salvo && salvo.visto) ? salvo.visto : (salvo || {});
+      S.rastreioVisto = Object.assign({}, mapa, S.rastreioVisto);
+    } catch(e){}
   }
-  function salvarEstado(st){
-    try{ localStorage.setItem(LS_KEY, JSON.stringify(st)); }catch(e){}
+
+  function salvarLocal(){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S.rastreioVisto||{})); } catch(e){}
   }
-  var estado = carregarEstado();
+
   var cicloAtual = [];
   var origMapear = window.mapearVeiculo;
   if (typeof origMapear === "function"){
@@ -2926,25 +2940,30 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       return r;
     };
   }
+
   function formatarPlaca(p){
     return (p && p.length===7) ? (p.slice(0,3)+"-"+p.slice(3)) : p;
   }
+
   function processarEspelhamento(lista){
     var agora = Date.now();
-    var primeiraVez = !estado.baseline;
     var novos = [];
     (lista||[]).forEach(function(v){
       var p = v && v.placa;
       if(!p) return;
       var noQuadro = S.drivers.some(function(d){ return normalizePlaca(d.placa)===p; });
-      if(!noQuadro && !primeiraVez){
-        var visto = estado.visto[p];
-        if(!visto || (agora-visto) >= GAP_MS) novos.push(v);
+      if(noQuadro){ S.rastreioVisto[p] = agora; return; }
+      var noArquivo = (S.arquivo||[]).some(function(d){ return normalizePlaca(d.placa)===p; });
+      var visto = S.rastreioVisto[p];
+      if(!noArquivo){
+        novos.push(v);
+      } else if(visto && (agora - visto) >= GAP_MS){
+        novos.push(v);
       }
-      estado.visto[p] = agora;
+      S.rastreioVisto[p] = agora;
     });
-    if(primeiraVez) estado.baseline = true;
-    salvarEstado(estado);
+    salvarLocal();
+    if(typeof marcarAlteracao === "function") marcarAlteracao();
     if(!novos.length) return;
     novos.forEach(function(v){
       var p = v.placa;
@@ -2980,6 +2999,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     if (typeof aplicarStatusAuto === "function") aplicarStatusAuto();
     render();
   }
+
   var origSincronizar = window.sincronizarApi;
   if (typeof origSincronizar === "function"){
     window.sincronizarApi = async function(){
@@ -2989,6 +3009,44 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       return r;
     };
   }
+
+  if (typeof estadoLocal === "function") {
+    var origEstadoLocal = estadoLocal;
+    window.estadoLocal = function(){
+      var e = origEstadoLocal();
+      e.rastreioVisto = S.rastreioVisto || {};
+      return e;
+    };
+  }
+
+  function mesclarVisto(remoto){
+    if(!remoto) return;
+    S.rastreioVisto = S.rastreioVisto || {};
+    Object.keys(remoto).forEach(function(p){
+      if(!S.rastreioVisto[p] || remoto[p] > S.rastreioVisto[p]) S.rastreioVisto[p] = remoto[p];
+    });
+    salvarLocal();
+  }
+
+  function puxarVisto(){
+    try {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      var c = lerSync();
+      sbLer(c).then(function(linha){
+        if (linha && linha.dados && linha.dados.rastreioVisto) mesclarVisto(linha.dados.rastreioVisto);
+      }).catch(function(){});
+    } catch(e){}
+  }
+  if (typeof puxarDoServidor === "function") {
+    var origPuxar = puxarDoServidor;
+    window.puxarDoServidor = function(){
+      var p = origPuxar();
+      if (p && typeof p.then === "function") p.then(puxarVisto).catch(function(){});
+      else puxarVisto();
+      return p;
+    };
+  }
+  setTimeout(puxarVisto, 1500);
 })();
 </script>
 </html>
