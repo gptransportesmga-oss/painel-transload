@@ -3049,4 +3049,216 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   setTimeout(puxarVisto, 1500);
 })();
 </script>
+<script>
+/* PATCH_ANEXOSENTREGA v1 - permite anexar foto (camera) ou arquivo (ex: PDF) em cada entrega,
+   pra guardar a nota fiscal/comprovante junto com a viagem. Pedido do dono, 18/08/2026: "os
+   dois" (foto e arquivo) e "as vezes tem 2 notas pro mesmo endereco" (varios anexos por entrega).
+   Guarda em d.anexosEntrega[chave] = [ {nome, tipo, dataUrl, criadoEm}, ... ], chave = slug do
+   cliente+destino (mesma chave que ja preserva o "concluida" ao reimportar entregas) - assim os
+   anexos sobrevivem a reimportacao/edicao de entregas sem precisar mexer no entSave/importEntregas.
+   Como e um campo dentro do proprio motorista (d), sincroniza sozinho pelo Supabase junto com o
+   resto do card (mesclarQuadro/estadoLocal ja copiam o objeto d inteiro) - nao precisou embrulhar
+   estadoLocal/puxarDoServidor feito com fotos/rastreioVisto.
+   Limite de tamanho: fotos sao recomprimidas (max 1280px, jpeg 72%) antes de guardar; arquivos
+   nao-imagem (pdf etc) sao aceitos ate ~3MB, maior que isso e recusado com aviso - o quadro
+   compartilhado e um unico bloco de dados, arquivo grande demais deixa a sincronizacao pesada.
+   Aviso pra manutencao futura: diferente da foto do motorista (uma por pessoa, tamanho fixo),
+   anexo de entrega cresce sem limite ao longo do tempo (cada viagem finalizada fica no
+   S.arquivo com seus anexos). Se o quadro comecar a ficar lento, migrar pra um bucket de
+   armazenamento separado (Supabase Storage) em vez de guardar tudo no blob principal.
+   Para desfazer, apague este bloco - os dados ficam orfaos em d.anexosEntrega, sem problema. */
+(function(){
+  if (window.__PATCH_ANEXOSENTREGA) return;
+  window.__PATCH_ANEXOSENTREGA = "v1";
+  var MAX_OUTRO_BYTES = 3.2*1024*1024;
+
+  function chaveEntrega(e){
+    return (typeof slug === "function") ? slug((e.cliente||"")+" "+(e.destino||"")) : ((e.cliente||"")+"|"+(e.destino||""));
+  }
+
+  function lerArquivo(file, cb){
+    if(!file) { cb(null); return; }
+    if(file.type && file.type.indexOf("image/")===0){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var maxDim = 1280;
+          var w = img.width, h = img.height;
+          var esc = Math.min(1, maxDim/Math.max(w,h));
+          var cw = Math.max(1, Math.round(w*esc)), ch = Math.max(1, Math.round(h*esc));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img,0,0,cw,ch);
+          var dataUrl;
+          try { dataUrl = canvas.toDataURL("image/jpeg", 0.72); } catch(e){ dataUrl = null; }
+          if(!dataUrl){ cb(null); return; }
+          cb({ nome: file.name||"foto.jpg", tipo:"image/jpeg", dataUrl: dataUrl, criadoEm: Date.now() });
+        };
+        img.onerror = function(){ cb(null); };
+        img.src = reader.result;
+      };
+      reader.onerror = function(){ cb(null); };
+      reader.readAsDataURL(file);
+    } else {
+      var reader2 = new FileReader();
+      reader2.onload = function(){
+        if(String(reader2.result||"").length > MAX_OUTRO_BYTES){
+          try { alert("Esse arquivo é muito grande (limite de ~3MB pra arquivos que não são foto). Tente uma versão menor."); } catch(e){}
+          cb(null); return;
+        }
+        cb({ nome: file.name||"arquivo", tipo: file.type||"application/octet-stream", dataUrl: reader2.result, criadoEm: Date.now() });
+      };
+      reader2.onerror = function(){ cb(null); };
+      reader2.readAsDataURL(file);
+    }
+  }
+
+  function forcarReinjetar(driverId){
+    document.querySelectorAll(".erow[data-anexoinj]").forEach(function(row){
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(chk && chk.getAttribute("data-id")===driverId) row.removeAttribute("data-anexoinj");
+    });
+    if (typeof injetarAnexos === "function") injetarAnexos();
+  }
+
+  function abrirAnexos(driverId, key){
+    var d = (typeof driver === "function") ? driver(driverId) : (S.drivers||[]).concat(S.arquivo||[]).find(function(x){return x.id===driverId;});
+    if(!d) return;
+    d.anexosEntrega = d.anexosEntrega || {};
+    var old = document.getElementById("__anexoModal");
+    if(old) old.remove();
+    var wrap = document.createElement("div");
+    wrap.id = "__anexoModal";
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+    var box = document.createElement("div");
+    box.style.cssText = "background:var(--card,#fff);color:var(--ink,#1B1E24);border-radius:10px;padding:16px;max-width:420px;width:100%;max-height:82vh;overflow:auto;font-family:inherit";
+
+    var inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*,application/pdf";
+    inp.setAttribute("capture", "environment");
+    inp.multiple = true;
+    inp.style.display = "none";
+
+    function desenhar(){
+      var lista = d.anexosEntrega[key] || [];
+      box.innerHTML = "";
+      var h4 = document.createElement("h4");
+      h4.textContent = "🧾 Notas / comprovantes";
+      h4.style.cssText = "margin:0 0 10px;font-size:16px";
+      box.appendChild(h4);
+      if(!lista.length){
+        var p = document.createElement("p");
+        p.style.cssText = "color:var(--muted,#666);font-size:13px;margin:0 0 10px";
+        p.textContent = "Nenhuma nota anexada ainda.";
+        box.appendChild(p);
+      }
+      lista.forEach(function(a, idx){
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line,#DCD7CB)";
+        var link = document.createElement("a");
+        link.href = a.dataUrl; link.target = "_blank"; link.rel = "noopener";
+        link.textContent = ((a.tipo||"").indexOf("pdf")>=0 ? "📄 " : "🖼 ") + (a.nome || "anexo");
+        link.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;font-size:13px";
+        var del = document.createElement("button");
+        del.textContent = "🗑";
+        del.className = "mini";
+        del.title = "Remover";
+        del.addEventListener("click", function(){
+          lista.splice(idx,1);
+          if (typeof touch === "function") touch(d);
+          if (typeof save === "function") save();
+          try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
+          desenhar();
+          forcarReinjetar(driverId);
+        });
+        row.appendChild(link); row.appendChild(del);
+        box.appendChild(row);
+      });
+      var addBtn = document.createElement("button");
+      addBtn.className = "mini";
+      addBtn.style.cssText = "background:var(--teal,#3B8C82);color:#fff;width:100%;margin-top:10px";
+      addBtn.textContent = "📎 Adicionar (foto ou arquivo)";
+      addBtn.addEventListener("click", function(){ inp.value = ""; inp.click(); });
+      box.appendChild(addBtn);
+      var fechar = document.createElement("button");
+      fechar.className = "mini";
+      fechar.style.cssText = "width:100%;margin-top:8px";
+      fechar.textContent = "Fechar";
+      fechar.addEventListener("click", function(){ wrap.remove(); });
+      box.appendChild(fechar);
+      box.appendChild(inp);
+    }
+
+    inp.addEventListener("change", function(){
+      var files = inp.files;
+      if(!files || !files.length) return;
+      var restantes = files.length;
+      Array.prototype.forEach.call(files, function(file){
+        lerArquivo(file, function(item){
+          if(item){
+            d.anexosEntrega[key] = d.anexosEntrega[key] || [];
+            d.anexosEntrega[key].push(item);
+          }
+          restantes--;
+          if(restantes<=0){
+            if (typeof touch === "function") touch(d);
+            if (typeof save === "function") save();
+            try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
+            desenhar();
+            forcarReinjetar(driverId);
+          }
+        });
+      });
+    });
+
+    wrap.appendChild(box);
+    wrap.addEventListener("click", function(ev){ if(ev.target===wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+    desenhar();
+  }
+  window.__abrirAnexosEntrega = abrirAnexos;
+
+  function injetarAnexos(){
+    document.querySelectorAll(".erow").forEach(function(row){
+      if(row.getAttribute("data-anexoinj")) return;
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(!chk) return;
+      var id = chk.getAttribute("data-id");
+      var i = parseInt(chk.getAttribute("data-i"),10);
+      var d = (typeof driver === "function") ? driver(id) : null;
+      if(!d || !d.entregas || !d.entregas[i]) return;
+      row.setAttribute("data-anexoinj","1");
+      var e = d.entregas[i];
+      var key = chaveEntrega(e);
+      var meta = row.querySelector(".emeta");
+      if(!meta) return;
+      var n = (d.anexosEntrega && d.anexosEntrega[key]) ? d.anexosEntrega[key].length : 0;
+      var btn = document.createElement("span");
+      btn.className = "chip";
+      btn.style.cssText = "cursor:pointer" + (n>0 ? "" : ";opacity:.55");
+      btn.title = "Anexar/ver notas e comprovantes desta entrega";
+      btn.textContent = "📎" + (n>0 ? " "+n : "");
+      btn.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        abrirAnexos(id, key);
+      });
+      meta.appendChild(btn);
+    });
+  }
+  window.injetarAnexos = injetarAnexos;
+
+  var origRender = window.render;
+  if (typeof origRender === "function"){
+    window.render = function(){
+      var r = origRender.apply(this, arguments);
+      setTimeout(injetarAnexos, 20);
+      return r;
+    };
+  }
+  setInterval(injetarAnexos, 2000);
+})();
+</script>
 </html>
