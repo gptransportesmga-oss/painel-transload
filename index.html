@@ -2664,12 +2664,19 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 })();
 </script>
 <script>
-/* PATCH_FOTOS v3 — foto do motorista no card + botao 📷 Foto para cadastrar/trocar.
+/* PATCH_FOTOS v4 — foto do motorista no card + botao 📷 Foto para cadastrar/trocar.
    IMPORTANTE: as fotos NAO ficam neste arquivo. O repositorio e publico; as imagens ficam
-   em S.fotos, dentro do quadro compartilhado. Para desfazer tudo, apague este bloco. */
+   em S.fotos, dentro do quadro compartilhado.
+   v4 (20/08/2026, pedido do dono): agora da pra escolher direto a foto da CNH nesse mesmo
+   botao — se o navegador tiver deteccao de rosto embutida (Chrome/Edge modernos), o corte
+   acha o rosto sozinho em vez de so cortar o centro da imagem (que ficava ruim numa CNH
+   inteira, com o rosto no canto). Se o navegador nao tiver essa API, cai automaticamente no
+   corte antigo (centralizado) — nada quebra. Em qualquer um dos dois casos, só o quadradinho
+   128x128 final fica salvo — a foto/scan original nunca é enviada nem guardada em lugar
+   nenhum, só existe na memória do navegador durante o corte. */
 (function(){
   if (window.__PATCH_FOTOS) return;
-  window.__PATCH_FOTOS = "v3";
+  window.__PATCH_FOTOS = "v4";
   var TAM = 38, LADO = 128, QUAL = 0.72;
   function norm(s){ return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim(); }
   window.normNome = norm;
@@ -2682,18 +2689,42 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     pintar();
     return norm(nome) + (dataUrl ? " -> " + dataUrl.length + " bytes" : " -> removida");
   };
+  function cortarECodificar(im, box){
+    var c = document.createElement("canvas"); c.width = LADO; c.height = LADO;
+    var g = c.getContext("2d"); g.imageSmoothingQuality = "high";
+    g.drawImage(im, box.sx, box.sy, box.lado, box.lado, 0, 0, LADO, LADO);
+    return c.toDataURL("image/jpeg", QUAL);
+  }
+  function corteCentralizado(im){
+    var lado = Math.min(im.width, im.height);
+    var sx = (im.width - lado) / 2;
+    var sy = (im.height - lado) / 2 * 0.6;
+    return { sx: sx, sy: sy, lado: lado };
+  }
+  async function acharCorteDoRosto(im){
+    if(!window.FaceDetector) return null;
+    try{
+      var fd = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+      var faces = await fd.detect(im);
+      if(!faces || !faces[0] || !faces[0].boundingBox) return null;
+      var bb = faces[0].boundingBox;
+      var cx = bb.x + bb.width/2;
+      var cy = bb.y + bb.height/2 - bb.height*0.15;
+      var lado = Math.min(Math.max(bb.width, bb.height) * 2.1, im.width, im.height);
+      if(lado <= 20) return null;
+      var sx = Math.max(0, Math.min(cx - lado/2, im.width - lado));
+      var sy = Math.max(0, Math.min(cy - lado/2, im.height - lado));
+      return { sx: sx, sy: sy, lado: lado };
+    }catch(err){ return null; }
+  }
   function reduzir(file, cb){
     var fr = new FileReader();
     fr.onload = function(){
       var im = new Image();
-      im.onload = function(){
-        var lado = Math.min(im.width, im.height);
-        var sx = (im.width - lado) / 2;
-        var sy = (im.height - lado) / 2 * 0.6;
-        var c = document.createElement("canvas"); c.width = LADO; c.height = LADO;
-        var g = c.getContext("2d"); g.imageSmoothingQuality = "high";
-        g.drawImage(im, sx, sy, lado, lado, 0, 0, LADO, LADO);
-        cb(c.toDataURL("image/jpeg", QUAL));
+      im.onload = async function(){
+        var box = await acharCorteDoRosto(im);
+        if(!box) box = corteCentralizado(im);
+        cb(cortarECodificar(im, box));
       };
       im.onerror = function(){ cb(null); };
       im.src = fr.result;
