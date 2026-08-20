@@ -3396,7 +3396,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
    informativo, no fica so o que ja tinha. Para desfazer, apague este bloco. */
 (function(){
   if (window.__PATCH_PROXIMO_E_HORAS) return;
-  window.__PATCH_PROXIMO_E_HORAS = "v1";
+  window.__PATCH_PROXIMO_E_HORAS = "v2";
   var RAIO_PROXIMO_M = 2000;
 
   function fmtDuracao(ms){
@@ -3449,6 +3449,40 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     });
   }
 
+  // Mesma pontuacao que entregaNaReferencia() usa pra decidir status "no_cliente" (nome do
+  // cliente / cidade-UF / rua batendo com o texto do rastreio) - reaproveitada aqui pra que
+  // o selo "No cliente"/"Proximo" so apareca quando o ponto perto do caminhao e de FATO uma
+  // das entregas pendentes, e nao qualquer referencia do Ca2Track (ex: um patio de origem em
+  // outro estado, que ficava marcando "No cliente" por engano - corrigido 20/08/2026).
+  function relevanciaEntrega(d){
+    try{
+      var t = d.tracking;
+      if(!t) return 0;
+      var pos = parsePosicao(t.posicao);
+      var refTxt = slug((t.referencia||"") + " " + (t.posicao||""));
+      var ruasPos = palavrasRua(pos.rua);
+      var l = d.entregas || [];
+      var melhorScore = 0;
+      for(var i=0;i<l.length;i++){
+        var e = l[i];
+        if(e.concluida) continue;
+        var score = 0;
+        var pn = palavrasFortes(e.cliente);
+        if(pn.length && pn.some(function(w){ return refTxt.indexOf(w) !== -1; })) score += 2;
+        var ed = parseDestino(e.destino);
+        var cidadeBate = ed.uf && pos.uf && ed.uf === pos.uf &&
+          (!ed.cidade || !pos.cidade || slug(pos.cidade).indexOf(slug(ed.cidade)) !== -1);
+        if(cidadeBate) score += 1;
+        if(e.rua){
+          var pr = palavrasRua(e.rua);
+          if(pr.length && ruasPos.length && pr.some(function(w){ return ruasPos.indexOf(w) !== -1; })) score += 3;
+        }
+        if(score > melhorScore) melhorScore = score;
+      }
+      return melhorScore;
+    }catch(err){ return 0; }
+  }
+
   function injetarChipProximidade(){
     document.querySelectorAll(".card").forEach(function(card){
       var idEl = card.querySelector("[data-id]");
@@ -3462,8 +3496,10 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       if(velha) velha.remove();
       var dist = window.distanciaRefMetros ? window.distanciaRefMetros(d.tracking.referencia || d.tracking.posicao) : null;
       if(dist === null) return;
+      var score = relevanciaEntrega(d);
+      if(score < 1) return; // ponto perto do caminhao nao bate com nenhuma entrega pendente
       var raioCliente = window.RAIO_CLIENTE_M || 200;
-      if(dist <= raioCliente){
+      if(score >= 2 && dist <= raioCliente){
         var s1 = document.createElement("span");
         s1.className = "chip"; s1.setAttribute("data-proxchip","1");
         s1.style.cssText = "background:#7C6FA8;color:#fff";
