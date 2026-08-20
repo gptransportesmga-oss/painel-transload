@@ -3541,4 +3541,41 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   };
 })();
 </script>
+<style id="__patchLegibilidade">
+/* PATCH_LEGIBILIDADE_CARDS v1 - pedido do dono, 20/08/2026: aumentar o tamanho/contraste da
+   letra nos cards (nome, placa, endereco, entregas) e organizar melhor as informacoes de cada
+   entrega — NF e tempo parado no cliente viram um "selo" destacado em vez de texto miudo solto.
+   So estilo (CSS), nao mexe em nenhuma logica/JS existente. Pra desfazer, apague este bloco. */
+.drv{font-size:15.5px!important;font-weight:700!important;line-height:1.3!important}
+.plate{font-size:12.5px!important;padding:3px 8px!important}
+.mdfe{font-size:12.5px!important}
+.cnt{font-size:11.5px!important}
+.pos{font-size:12.5px!important;line-height:1.4!important;font-weight:500!important}
+.ref{font-size:11.5px!important;line-height:1.4!important}
+.chips{gap:8px!important;margin-top:9px!important}
+.chip{font-size:11.5px!important;padding:3px 8px!important}
+.ago{font-size:11px!important}
+.enthead .ttl{font-size:11.5px!important}
+.entpeek{font-size:11.5px!important}
+.ecli{font-size:13.5px!important;font-weight:650!important;line-height:1.35!important}
+.emeta{font-size:11.5px!important;line-height:1.5!important;gap:8px!important;row-gap:5px!important;margin-top:4px!important}
+.emeta>span{color:var(--ink)!important;opacity:.72}
+.emeta>span.mono{
+  opacity:1!important;font-weight:700!important;color:var(--route)!important;
+  background:var(--boxbg,var(--bg));padding:2px 7px;border-radius:5px;
+}
+.emeta>span[data-horaent]{
+  opacity:1!important;font-weight:700!important;color:#2E7D46!important;
+  background:#E8F5EC;padding:2px 7px;border-radius:5px;
+}
+html[data-tema="escuro"] .emeta>span[data-horaent]{ background:#16301F!important; color:#7FD99A!important; }
+html[data-tema="escuro"] .emeta>span.mono{ color:#8FC1EA!important; }
+.badge-here{font-size:11px!important;padding:2px 6px;background:#E8F5EC;border-radius:5px}
+.badge-next{font-size:11px!important;padding:2px 6px;background:rgba(59,140,130,.14);border-radius:5px}
+html[data-tema="escuro"] .badge-here{ background:#16301F!important; }
+html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important; }
+.upd{font-size:12px!important}
+.mini{font-size:12px!important}
+.semnf span{font-size:11.5px!important}
+</style>
 </html>
