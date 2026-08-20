@@ -3496,4 +3496,49 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   setInterval(injetarTudo, 5000);
 })();
 </script>
+<script>
+/* PATCH_MERGE_RECENCIA v1 - pedido do dono, 20/08/2026.
+   Bug: mesclarQuadro() sempre dava prioridade pro registro ARQUIVADO sobre o ATIVO,
+   nao importa qual dos dois era mais recente. Resultado: um motorista recem-restaurado
+   do arquivo podia "voltar sozinho" pro arquivo no proximo sincronismo, se outro
+   computador/aba ainda tivesse uma copia desatualizada dele no arquivo local.
+   Corrigido: agora compara o updatedAt (ativo) com o updatedAt/archivedAt (arquivado)
+   e o mais recente que vence, nao importa em qual lista ele estava. */
+(function(){
+  if (window.__PATCH_MERGE_RECENCIA) return;
+  window.__PATCH_MERGE_RECENCIA = "v1";
+
+  window.mesclarQuadro = function(local, remoto){
+    const porId = {};
+    (remoto.motoristas||[]).forEach(function(d){ porId[d.id] = d; });
+    (local.motoristas||[]).forEach(function(d){
+      const r = porId[d.id];
+      if(!r || (d.updatedAt||0) >= (r.updatedAt||0)) porId[d.id] = d;
+    });
+    const arq = {};
+    [].concat(remoto.historico||[], local.historico||[]).forEach(function(h){
+      if(!h || !h.id) return;
+      const prev = arq[h.id];
+      if(!prev || (h.updatedAt||h.archivedAt||0) >= (prev.updatedAt||prev.archivedAt||0)) arq[h.id] = h;
+    });
+    Object.keys(arq).forEach(function(id){
+      const ativo = porId[id];
+      const arquivado = arq[id];
+      if(ativo){
+        const tAtivo = ativo.updatedAt||0;
+        const tArq = arquivado.updatedAt||arquivado.archivedAt||0;
+        if(tAtivo >= tArq){ delete arq[id]; } else { delete porId[id]; }
+      } else {
+        delete porId[id];
+      }
+    });
+    return {
+      motoristas: Object.keys(porId).map(function(k){return porId[k];}),
+      historico: Object.keys(arq).map(function(k){return arq[k];}).sort(function(a,b){return (b.archivedAt||0)-(a.archivedAt||0);}),
+      sensores: Object.assign({}, remoto.sensores||{}, local.sensores||{}),
+      tempLimite: (typeof local.tempLimite === "number") ? local.tempLimite : remoto.tempLimite,
+    };
+  };
+})();
+</script>
 </html>
