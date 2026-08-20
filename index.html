@@ -3340,4 +3340,47 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   window.__tickTemposRobusto = tickRobusto;
 })();
 </script>
+<script>
+/* PATCH_ANEXO_VISUALIZAR_FIX v1 - corrige "anexei mas nao consigo ver" nas notas/comprovantes
+   (PATCH_ANEXOSENTREGA). Causa: o link abria direto o data: URL em nova aba (target=_blank),
+   e o Chrome bloqueia navegacao de topo pra data: URL por seguranca (fica preso, nada abre).
+   Corrigido convertendo o data: URL pra um blob: URL na hora do clique - Chrome permite abrir
+   blob: URL numa aba nova normalmente. Pedido do dono, 20/08/2026. */
+(function(){
+  if (window.__PATCH_ANEXO_VISUALIZAR_FIX) return;
+  window.__PATCH_ANEXO_VISUALIZAR_FIX = "v1";
+
+  function dataUrlParaBlob(dataUrl){
+    var virgula = dataUrl.indexOf(",");
+    var meta = dataUrl.slice(5, virgula);
+    var isBase64 = meta.indexOf("base64") >= 0;
+    var mime = (meta.split(";")[0]) || "application/octet-stream";
+    var dados = dataUrl.slice(virgula+1);
+    var binario = isBase64 ? atob(dados) : decodeURIComponent(dados);
+    var arr = new Uint8Array(binario.length);
+    for (var i=0; i<binario.length; i++) arr[i] = binario.charCodeAt(i);
+    return new Blob([arr], {type: mime});
+  }
+
+  document.addEventListener("click", function(ev){
+    var el = ev.target;
+    while (el && el.tagName !== "A") el = el.parentElement;
+    if (!el) return;
+    var modal = document.getElementById("__anexoModal");
+    if (!modal || !modal.contains(el)) return;
+    var href = el.getAttribute("href") || "";
+    if (href.indexOf("data:") !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    try {
+      var blob = dataUrlParaBlob(href);
+      var url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(e){} }, 60000);
+    } catch(e) {
+      alert("N\u00e3o consegui abrir esse anexo. Tenta remover e anexar de novo.");
+    }
+  }, true);
+})();
+</script>
 </html>
