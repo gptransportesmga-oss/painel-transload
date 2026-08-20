@@ -3325,15 +3325,15 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 
   limpezaUnica();
   setTimeout(tickRobusto, 2000);
-  setInterval(tickRobusto, 15000);
+  setInterval(tickRobusto, 3000);
 
   var origRender = window.render;
   if (typeof origRender === "function"){
-    var ultimoTick = Date.now();
+    var ultimoTick = 0;
     window.render = function(){
       var r = origRender.apply(this, arguments);
       var agora = Date.now();
-      if(agora - ultimoTick > 8000){ ultimoTick = agora; try{ tickRobusto(); }catch(e){} }
+      if(agora - ultimoTick > 300){ ultimoTick = agora; try{ tickRobusto(); }catch(e){} }
       return r;
     };
   }
