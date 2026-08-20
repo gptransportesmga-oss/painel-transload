@@ -3767,4 +3767,127 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   };
 })();
 </script>
+<script>
+/* PATCH_EDITAR_IDENTIDADE v1 - pedido do dono, 21/08/2026: botao discreto (lapis, do lado
+   do lixinho no topo do card) pra editar o nome do motorista e a placa a qualquer momento,
+   sem precisar apagar e recriar o card. Se o motorista mudar de nome, a foto dele (S.fotos,
+   que e guardada pelo nome) migra sozinha pro nome novo, senao ela ficaria orfa. O painel
+   de edicao guarda o que foi digitado numa variavel a parte (rascunho), entao sobrevive
+   mesmo se o quadro atualizar sozinho (sincronismo) enquanto a pessoa ta digitando. Para
+   desfazer, apague este bloco. */
+(function(){
+  if (window.__PATCH_EDITAR_IDENTIDADE) return;
+  if (typeof render !== "function" || typeof save !== "function" || typeof esc !== "function") return;
+  window.__PATCH_EDITAR_IDENTIDADE = "v1";
+
+  var editando = null;
+  var rascunho = null; // {id, nome, placa} - sobrevive a um re-render enquanto edita
+
+  function acharDriver(id){
+    return (S.drivers||[]).find(function(x){ return x.id === id; });
+  }
+
+  function salvar(id, novoNomeRaw, novaPlacaRaw){
+    var d = acharDriver(id);
+    if(!d) return;
+    var novoNome = (novoNomeRaw||"").trim();
+    var novaPlaca = (novaPlacaRaw||"").trim().toUpperCase();
+    if(!novoNome || !novaPlaca){ alert("Preenche o nome e a placa."); return; }
+    var placaLimpa = novaPlaca.replace(/[^A-Z0-9]/g,"");
+    var dup = (S.drivers||[]).some(function(x){ return x.id!==id && (x.placa||"").toUpperCase().replace(/[^A-Z0-9]/g,"")===placaLimpa; });
+    if(dup && !confirm("Já tem outro card com essa placa. Salvar mesmo assim?")) return;
+    var nomeAntigo = d.motorista;
+    d.motorista = novoNome;
+    d.placa = novaPlaca;
+    d.updatedAt = Date.now();
+    if(window.setFoto && window.fotoDe && nomeAntigo && nomeAntigo !== novoNome){
+      var fotoAntiga = window.fotoDe(nomeAntigo);
+      if(fotoAntiga && !window.fotoDe(novoNome)){
+        window.setFoto(novoNome, fotoAntiga);
+        window.setFoto(nomeAntigo, null);
+      }
+    }
+    editando = null;
+    rascunho = null;
+    save();
+    render();
+  }
+
+  function montarPainel(card, id, d, topo){
+    var painel = card.querySelector(".editIdPainel");
+    if(painel) return;
+    painel = document.createElement("div");
+    painel.className = "edit editIdPainel";
+    topo.parentNode.insertBefore(painel, topo.nextSibling);
+    var valNome = (rascunho && rascunho.id===id) ? rascunho.nome : (d.motorista||"");
+    var valPlaca = (rascunho && rascunho.id===id) ? rascunho.placa : (d.placa||"");
+    painel.innerHTML =
+      '<label>Motorista</label><input class="__inpNome" value="'+esc(valNome)+'" />' +
+      '<label>Placa</label><input class="__inpPlaca" value="'+esc(valPlaca)+'" style="text-transform:uppercase" />' +
+      '<div style="display:flex;gap:8px;margin-top:4px">' +
+      '<button type="button" class="mini __btnSalvarId" style="background:var(--teal);color:#fff">💾 Salvar</button>' +
+      '<button type="button" class="mini __btnCancelarId">Cancelar</button></div>';
+    var inpNome = painel.querySelector(".__inpNome");
+    var inpPlaca = painel.querySelector(".__inpPlaca");
+    function guardarRascunho(){ rascunho = {id:id, nome:inpNome.value, placa:inpPlaca.value}; }
+    inpNome.oninput = guardarRascunho;
+    inpPlaca.oninput = guardarRascunho;
+    painel.querySelector(".__btnSalvarId").onclick = function(){ salvar(id, inpNome.value, inpPlaca.value); };
+    painel.querySelector(".__btnCancelarId").onclick = function(){ editando = null; rascunho = null; injetar(); };
+  }
+
+  function garantirBotao(card, id){
+    var delBtn = card.querySelector('.icobtn[data-act="del"][data-id="'+id+'"]');
+    if(!delBtn) return;
+    if(card.querySelector(".btnEditId")) return;
+    var grupo = delBtn.parentNode.querySelector(".grupoTopoBtns");
+    if(!grupo){
+      grupo = document.createElement("div");
+      grupo.className = "grupoTopoBtns";
+      grupo.style.cssText = "display:flex;gap:2px;align-items:center";
+      delBtn.parentNode.insertBefore(grupo, delBtn);
+      grupo.appendChild(delBtn);
+    }
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "icobtn btnEditId";
+    btn.title = "Editar motorista/placa";
+    btn.style.cssText = "opacity:.45;font-size:11px";
+    btn.textContent = "✏️";
+    btn.onclick = function(ev){
+      ev.stopPropagation();
+      editando = (editando === id) ? null : id;
+      if(editando !== id) rascunho = null;
+      injetar();
+    };
+    grupo.insertBefore(btn, delBtn);
+  }
+
+  function injetar(){
+    document.querySelectorAll(".card").forEach(function(card){
+      var delBtn = card.querySelector('.icobtn[data-act="del"]');
+      var id = delBtn ? delBtn.getAttribute("data-id") : null;
+      if(!id) return;
+      var topo = card.querySelector(".cardtop");
+      if(!topo) return;
+      garantirBotao(card, id);
+      var painelAtual = card.querySelector(".editIdPainel");
+      if(editando === id){
+        var d = acharDriver(id);
+        if(d) montarPainel(card, id, d, topo);
+      } else if(painelAtual){
+        painelAtual.remove();
+      }
+    });
+  }
+
+  var origRender = window.render;
+  window.render = function(){
+    var r = origRender.apply(this, arguments);
+    setTimeout(injetar, 20);
+    return r;
+  };
+  setInterval(injetar, 3000);
+})();
+</script>
 </html>
