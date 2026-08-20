@@ -1,0 +1,3386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Painel de Viagens — TRANSLOAD</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+  :root{
+    --bg:#EFEDE7; --card:#FFFFFF; --asphalt:#1B1E24; --ink:#1B1E24;
+    --muted:#666257; --line:#DCD7CB; --amber:#E8A23C; --route:#2E6F9E; --alert:#C64545;
+    --green:#3C9B5F; --teal:#3B8C82; --purple:#7C6FA8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .display{font-family:'Oswald',sans-serif;letter-spacing:.02em}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+  header{background:var(--asphalt);padding:18px 22px}
+  .hrow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  h1{color:#fff;font-size:28px;margin:0;text-transform:uppercase}
+  .sub{color:var(--amber);font-size:13px;margin-top:5px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .sub .warn{color:var(--alert)} .sub .hot{color:#FF8A65} .sub .ok{color:#7FD99A}
+  .sub .dim{color:rgba(255,255,255,.45)} .sub .box{color:rgba(255,255,255,.65)}
+  .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn{border:0;cursor:pointer;padding:9px 12px;border-radius:7px;font-size:13px;font-weight:600;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+  .btn:disabled{opacity:.3;cursor:default}
+  .btn-ghost{background:rgba(255,255,255,.08);color:#fff}
+  .btn-amber{background:var(--amber);color:var(--asphalt)}
+  .btn-route{background:var(--route);color:#fff}
+  .btn-teal{background:var(--teal);color:#fff}
+  .btn-green{background:var(--green);color:#fff}
+  .btn-white{background:#fff;color:var(--asphalt)}
+  .field{background:rgba(255,255,255,.08);color:#fff;border:0;border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit;outline:none}
+  .field::placeholder{color:rgba(255,255,255,.55)}
+  .tempbox{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border-radius:7px;padding:6px 9px}
+  .tempbox input{width:48px;background:transparent;border:0;color:#fff;outline:none;font-family:'IBM Plex Mono',monospace;font-size:13px}
+  .tempbox span{color:rgba(255,255,255,.6);font-size:11px}
+  select.field option{color:#000}
+  .road{height:3px;background-image:repeating-linear-gradient(90deg,var(--amber) 0,var(--amber) 22px,transparent 22px,transparent 40px)}
+  .panel{background:var(--card);border-bottom:1px solid var(--line);padding:16px 22px}
+  .panel p.hint{font-size:12px;color:var(--muted);margin:0 0 8px}
+  .panel textarea{width:100%;font-size:12px;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);font-family:'IBM Plex Mono',monospace;resize:vertical}
+  .panel .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px}
+  .msg{font-size:12px}
+  .board{padding:20px;overflow-x:auto;position:relative}
+  .board::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-repeat:no-repeat;background-position:center 58%;background-size:min(620px,55%);
+    opacity:.07}
+  .board > .grid{position:relative;z-index:1}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(250px,1fr));gap:16px;min-width:1040px}
+  .colhead{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:12px;border-bottom:2px solid var(--line)}
+  .colhead .name{font-family:'Oswald',sans-serif;font-size:14px;text-transform:uppercase}
+  .colhead .count{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--bg);color:var(--muted);padding:2px 7px;border-radius:5px}
+  .col{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px;box-shadow:0 1px 2px rgba(20,20,20,.06)}
+  .card.prob{border:1.5px solid var(--alert)}
+  .card.hot{border:1.5px solid #FF8A65}
+  .cardtop{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .drv{font-size:13.5px;font-weight:650;line-height:1.2;margin:0;display:flex;align-items:center;gap:7px}
+  .sinal{width:9px;height:9px;border-radius:99px;flex-shrink:0;display:inline-block}
+  .sinal.on{background:#3C9B5F;box-shadow:0 0 0 3px rgba(60,155,95,.18)}
+  .sinal.off{background:#AEA99E;box-shadow:0 0 0 3px rgba(174,169,158,.16)}
+  .tags{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:5px}
+  .plate{font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:var(--boxbg,var(--bg));padding:2px 6px;border-radius:5px}
+  .mdfe{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted)}
+  .cnt{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:700;color:#fff;background:var(--asphalt);padding:2px 6px;border-radius:5px}
+  .cnt.done{background:var(--green)}
+  .icobtn{background:none;border:0;cursor:pointer;color:var(--muted);padding:2px;line-height:1;font-size:13px}
+  .dots{display:flex;gap:4px;margin-top:10px}
+  .dot{width:7px;height:7px;border-radius:99px;background:var(--line)}
+  .track{margin-top:10px;padding:8px;border-radius:7px;background:var(--boxbg,var(--bg))}
+  .track.at{background:#E8F5EC}
+  .pos{font-size:11px;line-height:1.25;margin:0}
+  .ref{font-size:10px;line-height:1.25;font-style:italic;color:var(--muted);margin:2px 0 0}
+  .ref.at{color:#2E7D46;font-weight:600;font-style:normal}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:7px}
+  .chip{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border-radius:5px;background:var(--line);color:var(--muted)}
+  .chip.mov{background:var(--green);color:#fff}
+  .chip.t{background:var(--route);color:#fff;font-weight:700}
+  .chip.t.bad{background:#FF8A65}
+  .ago{font-size:10px;color:var(--muted);margin-left:auto}
+  .ent{margin-top:10px;padding:8px;border-radius:7px;background:var(--boxbg,var(--bg))}
+  .enthead{display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .enthead .ttl{font-size:10px;font-weight:700;text-transform:uppercase;color:#2F6E66;letter-spacing:.03em;display:flex;align-items:center;gap:5px;cursor:pointer;flex:1;background:none;border:0;font-family:inherit;padding:0;text-align:left}
+  .enthead .ttl .car{font-size:9px;transition:transform .15s;display:inline-block}
+  .minbtn{width:17px;height:17px;padding:0;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+  .minbtn:hover{background:var(--line);color:var(--ink)}
+  .entlist{margin-top:5px}
+  .entpeek{font-size:9.5px;color:var(--muted);margin:4px 0 0;font-style:italic;line-height:1.3}
+  .erow{display:flex;gap:7px;align-items:flex-start;padding:4px 6px;border-radius:5px;border:1px solid transparent}
+  .erow.next{background:rgba(59,140,130,.10);border-color:rgba(59,140,130,.5)}
+  .erow.here{background:#E8F5EC}
+  .erow input{margin:2px 0 0;cursor:pointer}
+  .ecli{font-size:11px;line-height:1.25;margin:0}
+  .ecli.done{text-decoration:line-through;opacity:.55}
+  .emeta{display:flex;gap:6px;flex-wrap:wrap;font-size:9.5px;color:var(--muted);margin-top:1px;align-items:center}
+  .badge-here{color:#2E7D46;font-weight:700;font-size:9px}
+  .badge-next{color:#2F6E66;font-weight:700;font-size:9px}
+  #stopbar{position:fixed;right:22px;bottom:22px;z-index:9999;display:none;gap:8px;align-items:center;
+    background:var(--alert);color:#fff;padding:12px 16px;border-radius:10px;
+    box-shadow:0 6px 20px rgba(0,0,0,.28);font-weight:700;font-size:15px}
+  #stopbar.on{display:flex;animation:pulsa 1s ease-in-out infinite}
+  @keyframes pulsa{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+  #stopbar button{border:0;border-radius:7px;cursor:pointer;font-family:inherit;font-weight:700;font-size:13px;padding:8px 12px}
+  #btnParar{background:#fff;color:var(--alert)}
+  #btnSilenciar{background:rgba(255,255,255,.22);color:#fff}
+  #stopbar .qtd{font-size:12px;font-weight:600;opacity:.9}
+  #cfg{position:fixed;inset:0;z-index:9998;background:rgba(20,20,25,.55);display:none;
+    align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+  #cfg.on{display:flex}
+  #cfg .win{background:var(--card);border-radius:12px;width:100%;max-width:720px;
+    box-shadow:0 22px 60px rgba(0,0,0,.4);overflow:hidden}
+  #cfg .top{background:var(--asphalt);padding:16px 20px;display:flex;align-items:center;justify-content:space-between}
+  #cfg .top h3{color:#fff;font-family:'Oswald',sans-serif;text-transform:uppercase;margin:0;font-size:18px;letter-spacing:.03em}
+  #cfg .fechar{background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:7px;padding:7px 11px;cursor:pointer;font-family:inherit;font-weight:600}
+  #cfg .abas{display:flex;gap:2px;background:var(--bg);padding:0 12px;border-bottom:1px solid var(--line)}
+  #cfg .aba{background:none;border:0;padding:12px 14px;cursor:pointer;font-family:inherit;font-size:13px;
+    font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  #cfg .aba.sel{color:var(--ink);border-bottom-color:#4820E1}
+  #cfg .conteudo{padding:20px}
+  #cfg .pag{display:none} #cfg .pag.sel{display:block}
+  #cfg h4{margin:0 0 4px;font-size:14px}
+  #cfg .ajuda{font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.45}
+  #cfg .linha{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+  #cfg .campo{display:flex;flex-direction:column;gap:4px}
+  #cfg .campo label{font-size:11px;color:var(--muted);font-weight:600}
+  #cfg input[type=text],#cfg input[type=password],#cfg input[type=number]{padding:9px 10px;border:1px solid var(--line);
+    border-radius:7px;font-family:inherit;font-size:13px;background:var(--bg)}
+  #cfg .acao{background:#4820E1;color:#fff;border:0;border-radius:7px;padding:9px 14px;cursor:pointer;
+    font-family:inherit;font-weight:700;font-size:13px}
+  #cfg .acao.sec{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+  #cfg .acao.perigo{background:var(--alert)}
+  #cfg table{width:100%;border-collapse:collapse;font-size:13px}
+  #cfg th{text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;
+    padding:6px 8px;border-bottom:1px solid var(--line)}
+  #cfg td{padding:8px;border-bottom:1px solid var(--line)}
+  #cfg .tagvoce{font-size:10px;background:#4820E1;color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px}
+  #cfg .remover{background:none;border:0;color:var(--alert);cursor:pointer;font-family:inherit;font-weight:600;font-size:12px}
+  #cfg .aviso{background:#FDF3E3;border:1px solid var(--amber);color:#7A5518;font-size:12px;
+    padding:10px 12px;border-radius:8px;line-height:1.45;margin-bottom:14px}
+  #cfg .ok{background:#E8F5EC;border:1px solid #9BD4AE;color:#256B3B;font-size:12.5px;padding:9px 12px;
+    border-radius:7px;margin-top:12px;display:none}
+  #cfg .ok.on{display:block}
+  #cfg .sens{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  #cfg .sens label{font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer}
+  #login{position:fixed;inset:0;z-index:99999;display:flex;
+    align-items:center;justify-content:center;padding:20px;
+    background:
+      radial-gradient(circle at 22% 18%, rgba(72,32,225,.55) 0%, transparent 48%),
+      radial-gradient(circle at 82% 82%, rgba(115,90,217,.42) 0%, transparent 52%),
+      linear-gradient(140deg, #150A3A 0%, #241063 42%, #0E0726 100%);
+  }
+  #login::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background-repeat:no-repeat;background-position:center;background-size:min(820px,105%);
+    opacity:.06}
+  #login .box{position:relative;z-index:1;background:var(--card);border-radius:14px;padding:26px 28px 24px;
+    width:100%;max-width:372px;box-shadow:0 22px 60px rgba(0,0,0,.55)}
+  #login .marca{display:block;width:236px;max-width:84%;margin:2px auto 18px}
+  #login h2{font-family:'Oswald',sans-serif;text-transform:uppercase;margin:0;font-size:19px;
+    letter-spacing:.03em;text-align:center;color:var(--asphalt)}
+  #login .sb{color:var(--muted);font-size:12px;margin:4px 0 20px;text-align:center;letter-spacing:.02em}
+  #login label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:600}
+  #login input[type=text],#login input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--line);
+    border-radius:8px;font-family:inherit;font-size:14px;margin-bottom:14px;background:var(--bg)}
+  #login input:focus{outline:2px solid #4820E1;outline-offset:-1px}
+  #login .entrar{width:100%;background:#4820E1;color:#fff;border:0;border-radius:8px;
+    padding:12px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  #login .lembrar{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-bottom:16px;cursor:pointer}
+  #login .erro{background:#FBE9E9;color:var(--alert);font-size:12px;padding:9px 11px;border-radius:7px;
+    margin-bottom:14px;display:none}
+  #login .erro.on{display:block}
+  #login .rodape{font-size:10.5px;color:var(--muted);margin:16px 0 0;line-height:1.4;text-align:center}
+  #app{display:none}
+  #app.on{display:block}
+  .semnf{margin-top:8px;padding:8px;border-radius:7px;background:#FDF3E3;border:1px solid var(--amber);display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .semnf span{font-size:10px;color:#9A6B1F;line-height:1.25}
+  .navrow{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+  .navrow .arrows{display:flex;gap:5px}
+  .sq{background:var(--boxbg,var(--bg));border:0;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:12px;color:var(--ink)}
+  .sq:disabled{opacity:.3;cursor:default}
+  .upd{font-size:11px;color:var(--muted)}
+  .cardbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .mini{font-size:11px;padding:4px 8px;border-radius:6px;border:0;cursor:pointer;background:var(--boxbg,var(--bg));color:var(--muted);font-family:inherit;font-weight:600}
+  .mini.on{background:var(--alert);color:#fff}
+  .mini.upd{background:var(--route);color:#fff}
+  .cardmsg{font-size:10px;margin:6px 0 0;line-height:1.3;padding:5px 7px;border-radius:5px}
+  .cardmsg.ok{background:#E8F5EC;color:#2E7D46}
+  .cardmsg.err{background:#FDF3E3;color:#9A6B1F}
+  .edit{margin-top:10px;padding:10px;border-radius:7px;background:var(--boxbg,var(--bg));border:1px solid var(--route);display:flex;flex-direction:column;gap:6px}
+  .edit.ent{border-color:var(--teal)}
+  .edit label{font-size:10px;color:var(--muted)}
+  .edit input,.edit textarea{font-size:11.5px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--card);font-family:inherit;width:100%}
+  .edit textarea{font-family:'IBM Plex Mono',monospace;resize:vertical}
+  .edit .four{display:flex;gap:6px}
+  .edit .four>div{flex:1}
+  .edit .four input{font-family:'IBM Plex Mono',monospace}
+  .empty{font-size:12px;font-style:italic;color:var(--muted);text-align:center;padding:16px;border:1px dashed var(--line);border-radius:9px}
+  .hist{padding:20px;max-width:820px}
+  .hcard{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:10px}
+  .hcard.prob{border:1.5px solid var(--alert)}
+  .pill{font-size:11px;padding:2px 6px;border-radius:5px;color:#fff;font-weight:600}
+  /* Botao "Importar rastreamento" oculto: a API do CA2Track ja importa sozinha (pedido do dono, 14/08/2026). Para reativar, apague a linha abaixo. */
+  #btnImp,#btnVoz{display:none}
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="box">
+    <h2>Painel de Viagens</h2>
+    <p class="sb">Acesso restrito</p>
+    <div class="erro" id="loginErro">Usuário ou senha incorretos.</div>
+    <form id="loginForm" autocomplete="on">
+      <label for="usr">Usuário</label>
+      <input type="text" id="usr" autocomplete="username" autocapitalize="off" spellcheck="false" />
+      <label for="pwd">Senha</label>
+      <input type="password" id="pwd" autocomplete="current-password" />
+      <label class="lembrar"><input type="checkbox" id="lembrar" checked /> Manter conectado neste computador</label>
+      <button type="submit" class="entrar">Entrar</button>
+    </form>
+    <p class="rodape">O mesmo usuário pode ser usado por várias pessoas, em quantos computadores precisar.</p>
+  </div>
+</div>
+<div id="app">
+<header>
+  <div class="hrow">
+    <div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <h1 class="display">Painel de Viagens</h1>
+      </div>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="tools">
+      <div class="tempbox" title="Alerta quando a temperatura chegar a este valor (ideal: -18°C)">
+        🌡
+        <input type="number" id="tempLimite" value="-10" />
+        <span>°C</span>
+      </div>
+      <button class="btn btn-amber" id="btnSom">🔔 Som on</button>
+      <button class="btn btn-ghost" id="btnVoz" title="Testa o alerta falado">🔊 Testar voz</button>
+      <input class="field" id="q" type="search" name="busca-quadro-viagens" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Buscar motorista, placa..." style="width:210px" />
+      <select class="field" id="filtro"></select>
+      <button class="btn btn-route" id="btnImp">📡 Importar rastreamento</button>
+      <button class="btn btn-teal" id="btnImpEnt">✅ Importar entregas</button>
+      <button class="btn btn-amber" id="btnAdd">＋ Motorista</button>
+      <button class="btn btn-green" id="btnArq">🗄 Encerrar finalizados</button>
+      <button class="btn btn-ghost" id="btnHist">🕘 Histórico</button>
+      <button class="btn btn-ghost" id="btnCfg" title="Configurações">⚙ Configurações</button>
+      <button class="btn btn-ghost" id="btnSair" title="Sair do painel">⎋ Sair</button>
+    </div>
+  </div>
+</header>
+<div class="road"></div>
+<div class="panel" id="panelImp" style="display:none">
+  <p class="hint">
+    Abra o <b>Ca2Track</b>, selecione e copie a tabela (Placa, Data/Hora, Km/h, Posição, Referência e Temperaturas) e cole abaixo (Ctrl+V).
+    Os veículos são casados automaticamente pela placa. Atalho: Ctrl+Enter para atualizar.
+  </p>
+  <textarea id="txtImp" rows="5" placeholder="Cole aqui a tabela copiada do Ca2Track..."></textarea>
+  <div class="actions">
+    <button class="btn btn-route" id="btnImpOk">Atualizar veículos</button>
+    <button class="btn" style="background:var(--bg);border:1px solid var(--line);color:var(--ink)" id="btnColar">📋 Colar automaticamente</button>
+    <button class="btn" style="background:transparent;color:var(--muted)" id="btnImpClose">Fechar</button>
+    <span class="msg" id="msgImp" style="color:var(--route)"></span>
+  </div>
+</div>
+<div class="panel" id="panelEnt" style="display:none">
+  <p class="hint">
+    <b>Entregas por viagem.</b> Na BSoft: no <b>CT-e</b> filtre pela placa e pegue o <b>Nº da viagem</b> (ex: 1745); cole esse número em
+    <b>NF-e Pré-Cadastradas</b> e veja as notas (Destinatário + Endereço). <b>Cada endereço distinto = 1 entrega</b> (notas do mesmo endereço são somadas).
+    Cole aqui uma linha por entrega, no formato <b>PLACA | Cliente | Cidade/UF | NFs</b> — ou, pra ajudar o painel a
+    detectar sozinho quando o caminhão chegou (mesmo com nome fantasia diferente do nome na nota), inclua também a rua:
+    <b>PLACA | Cliente | Cidade/UF | Rua | NFs</b>.
+    Se o caminhão não tiver NF na BSoft (provável fim de viagem), use <b>PLACA | FIM</b>.
+  </p>
+  <textarea id="txtEnt" rows="6" placeholder="GAR-0E27 | GR Serviços e Alimentação | São Paulo/SP | Rua Iguape | 194016
+BDN-2400 | Frigorífico Esplanada | Umuarama/PR | 55012, 55013
+AOS-7E44 | FIM"></textarea>
+  <div class="actions">
+    <button class="btn btn-teal" id="btnEntOk">Atualizar entregas</button>
+    <button class="btn" style="background:transparent;color:var(--muted)" id="btnEntClose">Fechar</button>
+    <span class="msg" id="msgEnt" style="color:var(--teal)"></span>
+  </div>
+</div>
+<div class="panel" id="panelAdd" style="display:none">
+  <div class="actions" style="margin-top:0;align-items:flex-end">
+    <div><label style="font-size:11px;color:var(--muted)">Motorista</label><br/>
+      <input id="addMot" style="padding:8px;border:1px solid var(--line);border-radius:6px;font-family:inherit" /></div>
+    <div><label style="font-size:11px;color:var(--muted)">Placa</label><br/>
+      <input id="addPlaca" class="mono" style="padding:8px;border:1px solid var(--line);border-radius:6px;width:120px" /></div>
+    <div><label style="font-size:11px;color:var(--muted)">Nº MDF-e</label><br/>
+      <input id="addMdfe" class="mono" style="padding:8px;border:1px solid var(--line);border-radius:6px;width:100px" /></div>
+    <button class="btn btn-route" id="btnAddOk">Adicionar</button>
+    <button class="btn" style="background:transparent;color:var(--muted)" id="btnAddClose">Cancelar</button>
+  </div>
+</div>
+<div id="cfg">
+  <div class="win">
+    <div class="top">
+      <h3>⚙ Configurações</h3>
+      <button class="fechar" id="cfgFechar">Fechar</button>
+    </div>
+    <div class="abas">
+      <button class="aba sel" data-pag="usuarios">👥 Usuários</button>
+      <button class="aba" data-pag="equipe">🔄 Equipe</button>
+      <button class="aba" data-pag="api">🛰 Rastreamento automático</button>
+      <button class="aba" data-pag="alertas">🌡 Alertas</button>
+      <button class="aba" data-pag="dados">💾 Dados</button>
+    </div>
+    <div class="conteudo">
+      <div class="pag sel" id="pag-usuarios">
+        <div class="aviso">
+          <b>Antes de cadastrar:</b> os usuários ficam guardados <b>neste computador</b>. Se a equipe usa
+          máquinas diferentes, crie o usuário e depois use <b>Dados → Exportar backup</b> para levar a lista
+          para os outros computadores. E lembre: esta tranca impede o acesso casual, mas quem entende de
+          informática consegue contorná-la — não guarde aqui nada que precise de sigilo real.
+        </div>
+        <h4>Adicionar usuário</h4>
+        <p class="ajuda">Cada pessoa pode ter o seu, o que ajuda a saber quem entrou e a cortar o acesso de quem sai da empresa.</p>
+        <div class="linha">
+          <div class="campo"><label>Usuário (login)</label><input type="text" id="novoUsr" placeholder="ex: joao.silva" autocapitalize="off" spellcheck="false" /></div>
+          <div class="campo"><label>Nome (opcional)</label><input type="text" id="novoNome" placeholder="ex: João Silva" /></div>
+          <div class="campo"><label>Senha</label><input type="password" id="novoPwd" /></div>
+          <button class="acao" id="btnAddUsr">Adicionar</button>
+        </div>
+        <h4 style="margin-top:18px">Usuários cadastrados</h4>
+        <table id="tabUsr"></table>
+        <div class="ok" id="okUsr"></div>
+      </div>
+      <div class="pag" id="pag-equipe">
+        <h4>Quadro compartilhado</h4>
+        <p class="ajuda">
+          Com isto ligado, <b>todo mundo vê o mesmo quadro</b>: o que uma pessoa marcar aparece para as outras
+          em poucos segundos — entregas, status, ocorrências e o rastreio. Sem isto, cada computador tem o seu.
+        </p>
+        <div class="aviso">
+          Cole abaixo os dois dados do seu projeto no <b>Supabase</b> (o serviço gratuito que guarda o quadro).
+          Você encontra em <b>Project Settings → API</b>: o <b>Project URL</b> e a chave <b>anon public</b>.
+          A chave <i>anon</i> é feita para ficar no navegador — não é uma senha.
+        </div>
+        <div class="linha">
+          <div class="campo" style="flex:1;min-width:260px"><label>Project URL</label>
+            <input type="text" id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" spellcheck="false" /></div>
+        </div>
+        <div class="linha">
+          <div class="campo" style="flex:1;min-width:260px"><label>Chave anon public</label>
+            <input type="text" id="sbKey" placeholder="eyJhbGciOi..." spellcheck="false" /></div>
+          <button class="acao" id="btnTestarSync">Testar e ativar</button>
+        </div>
+        <div class="linha">
+          <div class="campo"><label>Nome do quadro</label><input type="text" id="sbQuadro" value="transload" style="width:150px" /></div>
+          <div class="campo"><label>&nbsp;</label>
+            <label class="lembrar" style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="sbAtivo" /> Sincronização ligada
+            </label>
+          </div>
+          <button class="acao sec" id="btnEnviarAgora">⬆ Enviar meu quadro agora</button>
+        </div>
+        <div class="ok" id="okSync"></div>
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">Como criar o banco (passo a passo)</summary>
+          <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-top:8px">
+            1. Crie uma conta em <b>supabase.com</b> e um projeto novo (grátis).<br/>
+            2. No menu <b>SQL Editor</b>, cole e execute:
+            <pre style="background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:10px;margin:8px 0;white-space:pre-wrap;font-size:11px">create table painel (
+  id text primary key,
+  dados jsonb,
+  atualizado_em timestamptz default now(),
+  por text
+);
+alter table painel enable row level security;
+create policy "acesso do painel" on painel
+  for all using (true) with check (true);</pre>
+            3. Vá em <b>Project Settings → API</b>, copie o <b>Project URL</b> e a chave <b>anon public</b>.<br/>
+            4. Cole aqui em cima e clique em <b>Testar e ativar</b>.
+          </div>
+        </details>
+      </div>
+      <div class="pag" id="pag-api">
+        <h4>Conexão com o CA2Track (API Transrisco)</h4>
+        <p class="ajuda">
+          Com a API, o painel busca posição e temperatura <b>sozinho</b>, sem copiar e colar.
+          Use o mesmo usuário e senha com que você entra no Ca2Track.
+        </p>
+        <div class="aviso" id="avisoApi">
+          <b>Faça o teste antes de ligar o automático.</b> O navegador só deixa esta página conversar com o
+          servidor do CA2Track se o servidor autorizar (uma regra chamada CORS). Se o teste falhar por causa
+          disso, não é senha errada — é preciso pedir ao suporte do CA2 que libere o acesso. O teste abaixo diz
+          exatamente qual é o caso.
+        </div>
+        <div class="linha">
+          <div class="campo"><label>Usuário do Ca2Track</label><input type="text" id="apiUsr" autocapitalize="off" spellcheck="false" /></div>
+          <div class="campo"><label>Senha</label><input type="password" id="apiPwd" /></div>
+          <button class="acao" id="btnTestarApi">Testar conexão</button>
+        </div>
+        <label class="lembrar" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:-4px 0 14px;cursor:pointer">
+          <input type="checkbox" id="apiSalvar" checked /> Salvar a senha neste computador (necessário para o automático funcionar sozinho)
+        </label>
+        <h4 style="margin-top:18px">Atualização automática</h4>
+        <p class="ajuda">Enquanto o painel estiver aberto, ele busca os dados de tempos em tempos.</p>
+        <div class="linha">
+          <label class="lembrar" style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="apiAuto" /> Ligado
+          </label>
+          <div class="campo"><label>A cada (minutos)</label><input type="number" id="apiIntervalo" min="0.1" step="0.05" max="60" value="2" style="width:90px" /></div>
+          <button class="acao sec" id="btnSincAgora">↻ Atualizar agora</button>
+        </div>
+        <div class="ok" id="okApi"></div>
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted)">Ver resposta bruta do servidor (para ajustes)</summary>
+          <pre id="apiBruto" style="font-size:10.5px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:10px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin-top:8px">— faça um teste para ver —</pre>
+        </details>
+      </div>
+      <div class="pag" id="pag-alertas">
+        <h4>Temperatura</h4>
+        <p class="ajuda">O ideal da carga é <b>-18 °C</b>. O alarme falado dispara quando um sensor monitorado atinge o limite abaixo.</p>
+        <div class="linha">
+          <div class="campo"><label>Alertar ao atingir</label><input type="number" id="cfgLimite" style="width:110px" /></div>
+          <div class="campo"><label>&nbsp;</label><button class="acao sec" id="btnTestarVoz">🔊 Testar voz</button></div>
+          <div class="campo"><label>&nbsp;</label><button class="acao sec" id="btnSilenciar30">🔕 Silenciar 30 min</button></div>
+        </div>
+        <h4 style="margin-top:20px">Quais sensores valem por veículo</h4>
+        <p class="ajuda">
+          Alguns caminhões têm sensor de ambiente ou de cabine, que marca 20 °C sem que haja problema nenhum na carga.
+          Desmarque os sensores que <b>não</b> são do baú: eles continuam aparecendo no card, mas param de disparar o alarme.
+        </p>
+        <table id="tabSens"></table>
+        <div class="ok" id="okAlertas"></div>
+      </div>
+      <div class="pag" id="pag-dados">
+        <h4>Backup</h4>
+        <p class="ajuda">
+          Os dados do painel ficam salvos no navegador deste computador. Use o backup para levar tudo
+          (viagens, entregas, usuários e configurações) para outra máquina ou para não perder nada.
+        </p>
+        <div class="linha">
+          <button class="acao" id="btnExportar">⬇ Exportar backup</button>
+          <button class="acao sec" id="btnImportar">⬆ Importar backup</button>
+          <input type="file" id="arqImportar" accept="application/json" style="display:none" />
+        </div>
+        <h4 style="margin-top:20px">Limpeza</h4>
+        <p class="ajuda">Apaga as viagens do quadro e o histórico deste computador. Os usuários cadastrados são mantidos.</p>
+        <div class="linha">
+          <button class="acao perigo" id="btnLimpar">🗑 Apagar viagens e histórico</button>
+        </div>
+        <div class="ok" id="okDados"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="stopbar">
+  <span>🔊 Alerta de temperatura <span class="qtd" id="stopQtd"></span></span>
+  <button id="btnParar" title="Para a fala agora (tecla Esc)">⏹ Parar</button>
+  <button id="btnSilenciar" title="Para e não alerta de novo por 30 minutos">🔕 Silenciar 30 min</button>
+</div>
+<div class="board" id="board"></div>
+<div class="hist" id="histView" style="display:none"></div>
+</div><!-- /#app -->
+<script>
+/* Pre-configuracao TRANSLOAD (Claude, 14/08/2026): quadro compartilhado + usuario lucas */
+try{
+  var K="painel-viagens-sync";
+  var atual={};
+  try{ atual=JSON.parse(localStorage.getItem(K)||"{}"); }catch(e){}
+  atual.url="https://iiwzzebmibkhmhiryvui.supabase.co";
+  atual.key="sb_publishable_jlHskZx4KedVWQFZawookw_V_hmaABk";
+  if(!atual.quadro) atual.quadro="transload";
+  if(atual.ativo===undefined) atual.ativo=true;
+  localStorage.setItem(K, JSON.stringify(atual));
+}catch(e){}
+try{
+  var KU="painel-viagens-usuarios";
+  var us=[];
+  try{ us=JSON.parse(localStorage.getItem(KU)||"[]"); if(!Array.isArray(us)) us=[]; }catch(e){ us=[]; }
+  if(!us.some(function(x){return x && x.u==="lucas"})){
+    us.push({u:"lucas", nome:"Lucas", h:"vejxmd"});
+    localStorage.setItem(KU, JSON.stringify(us));
+  }
+}catch(e){}
+</script>
+<script>
+"use strict";
+const TEMP_IDEAL = -18;
+const STORAGE_KEY = "painel-viagens-motoristas";
+const HISTORY_KEY = "painel-viagens-historico";
+const STAGES = [
+  { key:"carregando", label:"Carregando", icon:"📦", color:"#D98A2B", fundo:"#FBF2E4", caixa:"#F4E7D2" },
+  { key:"em_rota",    label:"Em rota",    icon:"🚚", color:"#2E6F9E", fundo:"#EBF2F8", caixa:"#DCE8F2" },
+  { key:"no_cliente", label:"No cliente", icon:"📍", color:"#7C6FA8", fundo:"#F1EEF7", caixa:"#E5DFF0" },
+  { key:"finalizado", label:"Finalizado", icon:"✅", color:"#3C9B5F", fundo:"#EAF6EE", caixa:"#D9EDE1" },
+];
+const ENTREGAS_SEED = {
+  GAR0E27: [ { cliente:"GR Serviços e Alimentação LTDA", destino:"São Paulo/SP", notas:["194016"], concluida:false } ],
+};
+const SEED = [
+  { motorista:"THIAGO RODRIGUES XAVIER",  placa:"BDN-2400", mdfe:"862" },
+  { motorista:"LUCIANO APARECIDO JACINTO",placa:"GAR-0E27", mdfe:"861" },
+  { motorista:"VILMAR BARDUCCO TARTARI",  placa:"QAO-9320", mdfe:"860" },
+  { motorista:"ALEX BRUNO BAVELONI CESAR",placa:"TJU-0D81", mdfe:"859" },
+  { motorista:"DOUGLAS EMANOEL DOS SANTOS",placa:"AZR-3073",mdfe:"858" },
+  { motorista:"LUIZ HENRIQUE RONCA VIEIRA",placa:"OIQ-5F07",mdfe:"856" },
+  { motorista:"GUSTAVO FRANCO GAZINEU",   placa:"CZB-1H88", mdfe:"855" },
+  { motorista:"LUCIANO ALVES DA SILVA",   placa:"AOS-7E44", mdfe:"853" },
+  { motorista:"WILLIAN MARIO DOS SANTOS", placa:"ARZ-2297", mdfe:"843" },
+  { motorista:"JOAO CARLOS FRANA",        placa:"AJZ-2I38", mdfe:"842" },
+  { motorista:"LUCIAN DASMASCENO DA SILVA",placa:"EQU-8J59",mdfe:"838" },
+];
+const $ = (id) => document.getElementById(id);
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function normalizePlaca(p){ return String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+function parseBrDateTime(str){
+  if(!str) return null;
+  const m = String(str).trim().match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if(!m) return null;
+  return new Date(m[3]+"-"+m[2]+"-"+m[1]+"T"+m[4]+":"+m[5]+":"+m[6]).getTime();
+}
+function timeAgo(ts){
+  if(!ts) return "";
+  const d = Math.floor((Date.now()-ts)/60000);
+  if(d<1) return "agora";
+  if(d<60) return d+" min atrás";
+  const h = Math.floor(d/60);
+  if(h<24) return h+"h atrás";
+  return Math.floor(h/24)+"d atrás";
+}
+function slug(s){
+  return String(s==null?"":s).normalize("NFD").replace(/[̀-ͯ]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+}
+function chegouEmPonto(t){ return !!(t && t.referencia && /^em\s/i.test(String(t.referencia).trim())); }
+function sensorVale(placa, idx){
+  const cfg = S.sensores[normalizePlaca(placa)];
+  if(!cfg || !cfg.length) return true;
+  return cfg.indexOf(idx+1) !== -1;
+}
+function temperaturaForaDoLimite(d, limite){
+  const t = d && d.tracking;
+  if(!t || !t.temps || !t.temps.length) return false;
+  return t.temps.some((x,i) => sensorVale(d.placa,i) && x >= limite);
+}
+const STATUS_COM_ALARME = ["em_rota","no_cliente"];
+function alarmeVale(d){ return d && STATUS_COM_ALARME.indexOf(d.status) !== -1; }
+function emAlerta(d, limite){ return alarmeVale(d) && temperaturaForaDoLimite(d, limite); }
+function resumoEntregas(d){
+  const l = d.entregas || [];
+  return { total:l.length, feitas:l.filter(e=>e.concluida).length };
+}
+function proximaEntregaIdx(d){ return (d.entregas||[]).findIndex(e=>!e.concluida); }
+const SINAL_MINUTOS = 30;
+function sinalAtivo(d){
+  if(!d || !d.tracking || !d.tracking.trackedAt) return false;
+  return (Date.now() - d.tracking.trackedAt) < SINAL_MINUTOS*60000;
+}
+/* Regra do dono (14/08/2026): se o motorista ficar fora do rastreio (sem sinal do Ca2Track)
+   por mais de 5 horas, o card pode ser jogado direto pra Finalizado — provavelmente já
+   descarregou e desligou o rastreador, ou saiu de área de cobertura de vez. */
+const HORAS_SEM_SINAL_FINALIZA = 5;
+/* Cronômetro da atualização automática BSoft (Claude, 14/08/2026): o próprio Claude grava em
+   S.proximaAtualizacaoBsoft o horário previsto do próximo ciclo (roda por fora, a cada 5 min,
+   via agendamento encadeado) — aqui só exibimos a contagem regressiva. */
+function textoProximaAtualizacaoBsoft(){
+  if(!S.proximaAtualizacaoBsoft) return null;
+  const rest = S.proximaAtualizacaoBsoft - Date.now();
+  if(rest > 0){
+    const m = Math.floor(rest/60000);
+    const s = String(Math.floor((rest%60000)/1000)).padStart(2,"0");
+    return { txt: "⏱ próxima atualização BSoft em " + m + ":" + s, cls: "dim" };
+  }
+  if(rest > -10*60000) return { txt: "⏱ atualizando BSoft…", cls: "dim" };
+  return { txt: "⏱ atualização automática BSoft pode estar parada", cls: "warn" };
+}
+function semSinalHaHoras(d, horas){
+  if(!d || !d.tracking || !d.tracking.trackedAt) return false;
+  return (Date.now() - d.tracking.trackedAt) >= horas*3600000;
+}
+function textoSinal(d){
+  if(!d.tracking || !d.tracking.trackedAt) return "Sem sinal — nenhuma posição recebida ainda";
+  const min = Math.floor((Date.now() - d.tracking.trackedAt)/60000);
+  if(min < SINAL_MINUTOS) return "Sinal ativo — última posição " + (min<1 ? "agora" : "há "+min+" min");
+  const base = "Sem sinal " + timeAgo(d.tracking.trackedAt).replace(" atrás","") + " atrás — pode ter descarregado e desligado, ou o rastreador está sem comunicação";
+  return semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA) ? base + " (mais de "+HORAS_SEM_SINAL_FINALIZA+"h — finalizado automaticamente)" : base;
+}
+const GENERICAS = new Set(["atacadista","atacado","comercio","comercial","alimentos","alimenticios",
+  "alimentacao","distribuidora","distribuicao","importadora","produtos","ltda","brasil","sociedade",
+  "limitada","industria","logistica","transportes","supermercados","supermercado","super","centro",
+  "posto","servicos","recuperacao","judicial","frigorifico","foods","filial"]);
+function palavrasFortes(nome){
+  return slug(nome).split(" ").filter(w => w.length>=4 && !GENERICAS.has(w));
+}
+const RUA_GENERICAS = new Set(["rua","av","avenida","alameda","alam","rodovia","rod","travessa","trav",
+  "estrada","via","praca","pca","ln","linha","km","prx","proximo","perto","s n","sn"]);
+function palavrasRua(texto){
+  return slug(texto).split(" ").filter(w => w.length>=3 && !RUA_GENERICAS.has(w));
+}
+// Quebra a "Posição" que o Ca2Track devolve (ex: "Rua Cezare Pozzobom, Umuarama - PR" ou
+// "Prx Avenida X, Cidade-UF") em rua / cidade / uf, pra poder comparar com a entrega da BSoft.
+function parsePosicao(pos){
+  const s = String(pos||"").replace(/^prx\.?\s+/i,"").trim();
+  if(!s) return { rua:"", cidade:"", uf:"" };
+  const partes = s.split(",");
+  const rua = (partes[0]||"").trim();
+  const resto = partes.slice(1).join(",").trim();
+  const m = resto.match(/^(.*?)\s*-\s*([A-Za-z]{2})$/);
+  if(m) return { rua, cidade:m[1].trim(), uf:m[2].toUpperCase() };
+  return { rua, cidade:resto, uf:"" };
+}
+// Quebra o "destino" colado da BSoft (ex: "Umuarama/PR" ou só "PR") em cidade / uf.
+function parseDestino(destino){
+  const s = String(destino||"").trim();
+  const m = s.match(/^(.*?)\s*\/\s*([A-Za-z]{2})$/);
+  if(m) return { cidade:m[1].trim(), uf:m[2].toUpperCase() };
+  if(/^[A-Za-z]{2}$/.test(s)) return { cidade:"", uf:s.toUpperCase() };
+  return { cidade:s, uf:"" };
+}
+// Decide se o caminhão "chegou" numa das entregas pendentes. Não exige mais que o Ca2Track
+// reconheça um ponto de referência cadastrado (isso falha quando o motorista entra por um
+// portão dos fundos, por exemplo) — usa o caminhão estar PARADO + a posição (rua/cidade,
+// já devolvida pelo próprio rastreio por GPS) parecida com o endereço da nota. Também aceita
+// bater pelo nome do cliente contra o texto do rastreio, como antes (nome fantasia x razão
+// social costuma não bater — por isso cidade/rua contam como sinais independentes).
+function entregaNaReferencia(d){
+  const t = d.tracking;
+  if(!t || t.velocidade > 0) return -1;
+  const pos = parsePosicao(t.posicao);
+  const refTxt = slug((t.referencia||"") + " " + (t.posicao||""));
+  const ruasPos = palavrasRua(pos.rua);
+  const l = d.entregas || [];
+  let melhor = -1, melhorScore = 0;
+  for(let i=0;i<l.length;i++){
+    const e = l[i];
+    if(e.concluida) continue;
+    let score = 0;
+    const pn = palavrasFortes(e.cliente);
+    if(pn.length && pn.some(w => refTxt.indexOf(w) !== -1)) score += 2;      // nome bate (fraco, mas conta)
+    const ed = parseDestino(e.destino);
+    const cidadeBate = ed.uf && pos.uf && ed.uf === pos.uf &&
+      (!ed.cidade || !pos.cidade || slug(pos.cidade).indexOf(slug(ed.cidade)) !== -1);
+    if(cidadeBate) score += 1;                                              // cidade/UF bate (fraco sozinho)
+    if(e.rua){
+      const pr = palavrasRua(e.rua);
+      if(pr.length && ruasPos.length && pr.some(w => ruasPos.indexOf(w) !== -1)) score += 3; // rua bate (forte)
+    }
+    if(score > melhorScore){ melhorScore = score; melhor = i; }
+  }
+  return melhorScore >= 2 ? melhor : -1;
+}
+function statusAutomatico(d){
+  if(d.semNf) return "finalizado";
+  if((d.status==="em_rota" || d.status==="no_cliente") && !d.bsoftAberto && semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return "finalizado";
+  if(entregaNaReferencia(d) >= 0) return "no_cliente";
+  if(d.tracking) return "em_rota";
+  return d.status;
+}
+function aplicarStatusAuto(){
+  let n = 0;
+  S.drivers.forEach(d=>{
+    const novo = statusAutomatico(d);
+    if(novo !== d.status){ d.status = novo; d.updatedAt = Date.now(); n++; }
+  });
+  return n;
+}
+function playTone(kind){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const beep = (f,s,dur,g)=>{
+      const o=ctx.createOscillator(), gn=ctx.createGain();
+      o.type = kind==="temp" ? "square":"sine"; o.frequency.value=f; gn.gain.value=g;
+      o.connect(gn); gn.connect(ctx.destination);
+      o.start(ctx.currentTime+s); o.stop(ctx.currentTime+s+dur);
+    };
+    if(kind==="temp"){ beep(880,0,.15,.25); beep(880,.22,.15,.25); beep(880,.44,.22,.25); }
+    else { beep(523,0,.14,.18); beep(659,.16,.18,.18); }
+    setTimeout(()=>ctx.close(),1200);
+  }catch(e){}
+}
+function getVozMasculina(){
+  try{
+    const vs = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+    const pt = vs.filter(v => /pt/i.test(v.lang) || /portug/i.test(v.name));
+    const masc = pt.find(v => /(daniel|ricardo|felipe|jo[aã]o|ant[oô]nio|lu[ií]s|luciano|helio|h[eé]lio|paulo|male|masculin|homem)/i.test(v.name));
+    return masc || pt[0] || vs[0] || null;
+  }catch(e){ return null; }
+}
+let filaAlarme = [];
+let timerAlarme = null;
+let silencioAte = 0;
+function alarmeAtivo(){
+  return filaAlarme.length > 0 || (window.speechSynthesis && window.speechSynthesis.speaking);
+}
+function mostrarBarraParar(){
+  const bar = $("stopbar");
+  if(!bar) return;
+  const ativo = alarmeAtivo();
+  bar.className = ativo ? "on" : "";
+  const q = $("stopQtd");
+  if(q) q.textContent = filaAlarme.length > 0 ? "(faltam " + filaAlarme.length + ")" : "";
+}
+function pararAlarme(){
+  filaAlarme = [];
+  if(timerAlarme){ clearTimeout(timerAlarme); timerAlarme = null; }
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  mostrarBarraParar();
+}
+function silenciarAlarme(minutos){
+  pararAlarme();
+  silencioAte = Date.now() + minutos*60000;
+  renderSub();
+}
+function frase(d){
+  const temps = (d.tracking && d.tracking.temps) || [];
+  const pior = temps.length ? Math.max.apply(null,temps) : null;
+  const placaFalada = String(d.placa||"").replace(/[^A-Z0-9]/gi,"").split("").join(" ");
+  let txt = "Atenção. Veículo placa " + placaFalada + ". Motorista " + (d.motorista||"") +
+            ". Temperatura fora do ideal de menos dezoito graus.";
+  if(pior!=null) txt += " Marcando " + (pior<0 ? "menos " : "") + Math.abs(pior) + " graus.";
+  return txt;
+}
+function falarProximo(){
+  timerAlarme = null;
+  if(!filaAlarme.length){ mostrarBarraParar(); return; }
+  const d = filaAlarme.shift();
+  mostrarBarraParar();
+  try{
+    if(!window.speechSynthesis){ return; }
+    const u = new SpeechSynthesisUtterance(frase(d));
+    u.lang = "pt-BR";
+    const v = getVozMasculina(); if(v) u.voice = v;
+    u.pitch = 0.7;
+    u.rate  = 0.98;
+    u.volume = 1;
+    const seguir = ()=>{ if(filaAlarme.length) timerAlarme = setTimeout(falarProximo, 500); else mostrarBarraParar(); };
+    u.onend = seguir;
+    u.onerror = seguir;
+    window.speechSynthesis.speak(u);
+  }catch(e){ mostrarBarraParar(); }
+}
+function falarTempFora(lista){
+  const arr = Array.isArray(lista) ? lista : [lista];
+  if(!arr.length) return;
+  if(Date.now() < silencioAte) return;
+  filaAlarme = filaAlarme.concat(arr);
+  if(!timerAlarme && !(window.speechSynthesis && window.speechSynthesis.speaking)) falarProximo();
+  else mostrarBarraParar();
+}
+if(window.speechSynthesis){
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+function parseTrackingTable(text){
+  const lines = String(text||"").split("\n").map(l=>l.trim()).filter(Boolean);
+  const updates = {}; let matched = 0;
+  for(const line of lines){
+    let cols = line.split("\t").map(c=>c.trim());
+    if(cols.length < 5) cols = line.split(/\s{2,}/).map(c=>c.trim());
+    if(cols.length < 5) continue;
+    const placaRaw = cols[0];
+    if(!/^[A-Z]{2,3}[-\s]?\d/i.test(placaRaw)) continue;
+    const placa = normalizePlaca(placaRaw);
+    const dataHora = cols.find(c=>/\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}/.test(c)) || "";
+    const kmCol = cols.find(c=>/^\d+$/.test(c));
+    const velocidade = kmCol ? parseInt(kmCol,10) : 0;
+    const temps = [];
+    for(const c of cols){ const tm = c.match(/-?\d+\s*°?C/); if(tm) temps.push(parseInt(tm[0],10)); }
+    const textCols = cols.filter(c => c!==placaRaw && c!==dataHora && c!==kmCol && !/°?C$/.test(c) && c.length>3);
+    const posicao = textCols[0] || "";
+    const referencia = textCols[1] || "";
+    if(!posicao && !temps.length && !velocidade) continue;
+    updates[placa] = { posicao, referencia, velocidade, temps, trackedAt: parseBrDateTime(dataHora) || Date.now() };
+    matched++;
+  }
+  return { updates, matched };
+}
+function parseEntregasTable(text){
+  const lines = String(text||"").split("\n").map(l=>l.trim()).filter(Boolean);
+  const byPlaca = {}, fim = {}; let rows = 0;
+  for(const line of lines){
+    if(line.indexOf("|") === -1) continue;
+    const p = line.split("|").map(c=>c.trim());
+    if(p.length < 2) continue;
+    const placa = normalizePlaca(p[0]);
+    if(!/^[A-Z]{2,3}\d/.test(placa)) continue;
+    const cliente = p[1] || "";
+    if(!cliente) continue;
+    if(/^(fim|sem\s*nf|finaliza|sem\s*entrega)/i.test(cliente)){ fim[placa]=true; rows++; continue; }
+    const destino = p[2] || "";
+    // Coluna de Rua é opcional: "PLACA | Cliente | Cidade/UF | NFs" (formato antigo, 4 colunas)
+    // continua funcionando; "PLACA | Cliente | Cidade/UF | Rua | NFs" (5 colunas) já usa a rua.
+    let rua = "", notasRaw = "";
+    if(p.length >= 5){ rua = p[3] || ""; notasRaw = p[4] || ""; }
+    else { notasRaw = p[3] || ""; }
+    const notas = notasRaw.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    (byPlaca[placa] = byPlaca[placa] || []).push({ cliente, destino, rua, notas, concluida:false });
+    rows++;
+  }
+  Object.keys(byPlaca).forEach(pl=>{
+    const seen = {}, out = [];
+    byPlaca[pl].forEach(e=>{
+      const k = slug(e.cliente + " " + e.destino);
+      if(seen[k]){ e.notas.forEach(n=>{ if(seen[k].notas.indexOf(n)===-1) seen[k].notas.push(n); }); }
+      else { seen[k] = e; out.push(e); }
+    });
+    byPlaca[pl] = out;
+  });
+  return { byPlaca, fim, rows };
+}
+const S = {
+  drivers: [], arquivo: [],
+  view: "painel", query: "", statusFilter: "todos",
+  tempLimite: -10, somLigado: true,
+  editTracking: null, editEntregas: null, sensores: {},
+  lastImportAt: null, lastEntAt: null, cardMsg: null,
+};
+let alertados = new Set();
+let baseline = false;
+function memOk(){ try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); return true; }catch(e){ return false; } }
+const HAS_LS = memOk();
+function load(){
+  try{
+    const raw = HAS_LS ? localStorage.getItem(STORAGE_KEY) : null;
+    S.maquinaNova = !raw;
+    S.drivers = raw ? JSON.parse(raw) : SEED.map((d,i)=>({
+      id:"seed-"+i, motorista:d.motorista, placa:d.placa, mdfe:d.mdfe,
+      status:"carregando", problema:false, obs:"", updatedAt:Date.now(),
+      tracking:null, semNf:false, entAberto:true,
+      entregas: (ENTREGAS_SEED[normalizePlaca(d.placa)] || []).map(e=>({
+        cliente:e.cliente, destino:e.destino, rua:e.rua||"", notas:e.notas.slice(), concluida:false
+      })),
+    }));
+    const h = HAS_LS ? localStorage.getItem(HISTORY_KEY) : null;
+    S.arquivo = h ? JSON.parse(h) : [];
+    const VALIDOS = new Set(STAGES.map(s=>s.key));
+    S.drivers.forEach(d=>{ if(!VALIDOS.has(d.status)) d.status = "no_cliente"; });
+    S.arquivo.forEach(d=>{ if(d.finalStatus && !VALIDOS.has(d.finalStatus)) d.finalStatus = "no_cliente"; });
+  }catch(e){ S.drivers = []; S.arquivo = []; }
+}
+let salvandoDoServidor = false;
+function save(){
+  if(HAS_LS){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(S.drivers));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(S.arquivo));
+    }catch(e){}
+  }
+  if(!salvandoDoServidor){
+    if(typeof marcarAlteracao === "function") marcarAlteracao();
+    if(typeof artMarcarAlteracao === "function") artMarcarAlteracao();
+  }
+}
+function checkAlerts(){
+  const atual = new Set();
+  const novasTemp = []; let novaChegada = false;
+  S.drivers.forEach(d=>{
+    if(emAlerta(d, S.tempLimite)){
+      const k = d.id+":temp"; atual.add(k);
+      if(baseline && !alertados.has(k)) novasTemp.push(d);
+    }
+    if(chegouEmPonto(d.tracking)){
+      const k = d.id+":chegada"; atual.add(k);
+      if(baseline && !alertados.has(k)) novaChegada = true;
+    }
+  });
+  if(baseline && S.somLigado){
+    if(novasTemp.length) falarTempFora(novasTemp);
+    if(novaChegada) playTone("chegada");
+  }
+  alertados = atual;
+  baseline = true;
+}
+function driver(id){ return S.drivers.find(d=>d.id===id); }
+function touch(d){ d.updatedAt = Date.now(); }
+function importTracking(){
+  const r = parseTrackingTable($("txtImp").value);
+  if(!r.matched){ $("msgImp").textContent = "Não reconheci nenhuma linha. Confira se colou a tabela inteira (com as placas)."; return; }
+  const noPainel = new Set(S.drivers.map(d=>normalizePlaca(d.placa)));
+  const ok = Object.keys(r.updates).filter(p=>noPainel.has(p)).length;
+  const fora = Object.keys(r.updates).filter(p=>!noPainel.has(p)).length;
+  S.drivers.forEach(d=>{
+    const t = r.updates[normalizePlaca(d.placa)];
+    if(t){ d.tracking = t; touch(d); }
+  });
+  S.lastImportAt = Date.now();
+  const mud = aplicarStatusAuto();
+  $("msgImp").textContent = r.matched + " linha(s) lida(s) — " + ok + " veículo(s) do painel atualizado(s)." +
+    (mud>0 ? " " + mud + " status ajustado(s) automaticamente." : "") +
+    (fora>0 ? " " + fora + " placa(s) da tabela não estão no painel." : "");
+  $("txtImp").value = "";
+  save(); checkAlerts(); render();
+}
+function importEntregas(){
+  const r = parseEntregasTable($("txtEnt").value);
+  if(!r.rows){ $("msgEnt").textContent = "Não reconheci nenhuma entrega. Formato: PLACA | Cliente | Cidade/UF | NFs (ou PLACA | FIM)."; return; }
+  const noPainel = new Set(S.drivers.map(d=>normalizePlaca(d.placa)));
+  const todas = new Set(Object.keys(r.byPlaca).concat(Object.keys(r.fim)));
+  let ok=0, fora=0;
+  todas.forEach(p => noPainel.has(p) ? ok++ : fora++);
+  S.drivers.forEach(d=>{
+    const pl = normalizePlaca(d.placa);
+    if(r.fim[pl]){ d.entregas = []; d.semNf = true; touch(d); return; }
+    const novas = r.byPlaca[pl];
+    if(!novas) return;
+    const antes = {};
+    (d.entregas||[]).forEach(e=>{ antes[slug(e.cliente+" "+e.destino)] = e.concluida; });
+    d.entregas = novas.map(e=>({ cliente:e.cliente, destino:e.destino, rua:e.rua||"", notas:e.notas.slice(), concluida: !!antes[slug(e.cliente+" "+e.destino)] }));
+    d.semNf = false; touch(d);
+  });
+  S.lastEntAt = Date.now();
+  const mud = aplicarStatusAuto();
+  $("msgEnt").textContent = r.rows + " linha(s) lida(s) — " + ok + " veículo(s) do painel atualizado(s)." +
+    (mud>0 ? " " + mud + " status ajustado(s) automaticamente." : "") +
+    (fora>0 ? " " + fora + " placa(s) não estão no painel." : "");
+  $("txtEnt").value = "";
+  save(); render();
+}
+async function lerAreaTransferencia(){
+  try{
+    if(navigator.clipboard && navigator.clipboard.readText){
+      const t = await navigator.clipboard.readText();
+      if(t && t.trim()) return t;
+    }
+  }catch(e){}
+  return window.prompt("Cole aqui o que você copiou (tabela do Ca2Track ou as linhas de entregas):", "") || "";
+}
+function msgCard(id, texto, tipo){
+  S.cardMsg = { id, texto, tipo };
+  render();
+  clearTimeout(msgCard._t);
+  msgCard._t = setTimeout(()=>{ S.cardMsg = null; render(); }, 9000);
+}
+async function atualizarCard(id){
+  const d = driver(id);
+  if(!d) return;
+  const txt = await lerAreaTransferencia();
+  if(!txt.trim()){ msgCard(id, "Nada foi copiado. Copie a tabela do Ca2Track (ou as linhas de entregas) e clique de novo.", "err"); return; }
+  const pl = normalizePlaca(d.placa);
+  const feito = [];
+  const tr = parseTrackingTable(txt);
+  if(tr.updates[pl]){ d.tracking = tr.updates[pl]; feito.push("rastreio"); }
+  const en = parseEntregasTable(txt);
+  if(en.fim[pl]){
+    d.entregas = []; d.semNf = true; feito.push("sem NF (provável fim de viagem)");
+  } else if(en.byPlaca[pl]){
+    const antes = {};
+    (d.entregas||[]).forEach(e=>{ antes[slug(e.cliente+" "+e.destino)] = e.concluida; });
+    d.entregas = en.byPlaca[pl].map(e=>({
+      cliente:e.cliente, destino:e.destino, rua:e.rua||"", notas:e.notas.slice(),
+      concluida: !!antes[slug(e.cliente+" "+e.destino)]
+    }));
+    d.semNf = false;
+    feito.push(d.entregas.length + (d.entregas.length===1 ? " entrega" : " entregas"));
+  }
+  if(!feito.length){
+    msgCard(id, "Não achei a placa "+d.placa+" no que você copiou. Confira se copiou a tabela inteira (com a linha dessa placa).", "err");
+    return;
+  }
+  const stAntes = d.status;
+  const stNovo = statusAutomatico(d);
+  if(stNovo !== stAntes){ d.status = stNovo; feito.push("status → " + (STAGES.find(s=>s.key===stNovo)||{}).label); }
+  touch(d); save(); checkAlerts();
+  msgCard(id, "✅ Atualizado: " + feito.join(" + ") + ".", "ok");
+}
+function renderSub(){
+  const prob = S.drivers.filter(d=>d.problema).length;
+  const hot  = S.drivers.filter(d=>emAlerta(d,S.tempLimite)).length;
+  const cheg = S.drivers.filter(d=>chegouEmPonto(d.tracking) && d.status!=="finalizado").length;
+  const tot  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).length),0);
+  const fei  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).filter(e=>e.concluida).length),0);
+  const data = new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
+  let h = "<span>"+esc(data)+"</span>";
+  if(prob) h += '<span class="warn">⚠ '+prob+" com ocorrência</span>";
+  if(hot)  h += '<span class="hot">🌡 '+hot+" alertando ("+S.tempLimite+"°C ou mais)</span>";
+  if(cheg) h += '<span class="ok">📍 '+cheg+" chegando/no ponto</span>";
+  if(tot)  h += '<span class="box">📦 '+fei+"/"+tot+" entregas</span>";
+  if(ART){ h += '<span class="ok">🔄 quadro compartilhado (artefato)</span>'; }
+  if(syncLigado()){
+    const seg = ultimoSyncOk ? Math.floor((Date.now()-ultimoSyncOk)/1000) : null;
+    h += '<span class="ok">🔄 quadro compartilhado'+(seg!==null && seg<60 ? " (em dia)" : "")+"</span>";
+  }
+  const semSinal = S.drivers.filter(d=>d.status!=="finalizado" && !sinalAtivo(d)).length;
+  if(semSinal) h += '<span class="dim">⚫ '+semSinal+" sem sinal</span>";
+  if(Date.now() < silencioAte){
+    const min = Math.ceil((silencioAte - Date.now())/60000);
+    h += '<span class="dim">🔕 alerta silenciado por '+min+" min</span>";
+  }
+  if(S.lastImportAt) h += '<span class="dim">rastreio importado '+timeAgo(S.lastImportAt)+"</span>";
+  const prox = textoProximaAtualizacaoBsoft();
+  if(prox) h += '<span class="'+prox.cls+'">'+esc(prox.txt)+"</span>";
+  if(!HAS_LS) h += '<span class="dim">(sem gravação neste modo — abra o arquivo salvo no PC)</span>';
+  $("sub").innerHTML = h;
+}
+function cardHTML(d){
+  const stageIdx = STAGES.findIndex(s=>s.key===d.status);
+  const st = STAGES[stageIdx] || STAGES[0];
+  const hot = emAlerta(d,S.tempLimite);
+  const at  = chegouEmPonto(d.tracking);
+  const rz  = resumoEntregas(d);
+  const prox= proximaEntregaIdx(d);
+  const here= entregaNaReferencia(d);
+  let h = '<div class="card'+(d.problema?" prob":(hot?" hot":""))+'" data-st="'+st.key+'" style="background:'+st.fundo+';--boxbg:'+st.caixa+'">';
+  h += '<div class="cardtop"><div>';
+  const on = sinalAtivo(d);
+  h += '<p class="drv"><span class="sinal '+(on?"on":"off")+'" title="'+esc(textoSinal(d))+'"></span>'+esc(d.motorista)+"</p>";
+  h += '<div class="tags"><span class="plate">'+esc(d.placa)+"</span>";
+  if(d.mdfe) h += '<span class="mdfe">MDF-e '+esc(d.mdfe)+"</span>";
+  if(rz.total) h += '<span class="cnt'+(rz.feitas===rz.total?" done":"")+'" title="Entregas concluídas / total">📦 '+rz.feitas+"/"+rz.total+"</span>";
+  h += "</div></div>";
+  h += '<button class="icobtn" data-act="del" data-id="'+d.id+'" title="Remover (vai para o histórico)">🗑</button></div>';
+  h += '<div class="dots">';
+  STAGES.forEach((s,i)=>{ h += '<div class="dot" style="background:'+(i<=stageIdx?st.color:"var(--line)")+'"></div>'; });
+  h += "</div>";
+  if(S.editTracking === d.id){
+    const t = d.tracking || {}; const tp = t.temps || [];
+    h += '<div class="edit">';
+    h += '<label>Posição</label><input data-f="pos" value="'+esc(t.posicao||"")+'" placeholder="Ex: Rod. BR-376, Alto Paraná-PR" />';
+    h += '<label>Referência</label><input data-f="ref" value="'+esc(t.referencia||"")+'" placeholder="Ex: em Gtfoods - Paraíso do Norte" />';
+    h += '<div class="four">';
+    h += '<div><label>Km/h</label><input data-f="vel" type="number" value="'+(t.velocidade!=null?t.velocidade:"")+'" /></div>';
+    h += '<div><label>S1 °C</label><input data-f="s1" type="number" value="'+(tp[0]!=null?tp[0]:"")+'" /></div>';
+    h += '<div><label>S2 °C</label><input data-f="s2" type="number" value="'+(tp[1]!=null?tp[1]:"")+'" /></div>';
+    h += '<div><label>S3 °C</label><input data-f="s3" type="number" value="'+(tp[2]!=null?tp[2]:"")+'" /></div>';
+    h += "</div>";
+    h += '<div style="display:flex;gap:8px;margin-top:4px">';
+    h += '<button class="mini" style="background:var(--route);color:#fff" data-act="trkSave" data-id="'+d.id+'">💾 Salvar</button>';
+    h += '<button class="mini" data-act="trkCancel">Cancelar</button></div></div>';
+  } else if(d.tracking && (d.tracking.posicao || (d.tracking.temps||[]).length)){
+    h += '<div class="track'+(at?" at":"")+'">';
+    h += '<div style="display:flex;gap:6px;align-items:flex-start">';
+    h += '<span style="color:var(--route);font-size:11px">➤</span><div style="flex:1">';
+    h += '<p class="pos">'+esc(d.tracking.posicao||"")+"</p>";
+    if(d.tracking.referencia) h += '<p class="ref'+(at?" at":"")+'">'+(at?"📍 ":"")+esc(d.tracking.referencia)+"</p>";
+    h += "</div>";
+    h += '<button class="icobtn" data-act="trkEdit" data-id="'+d.id+'" title="Editar rastreio">✏️</button></div>';
+    h += '<div class="chips">';
+    h += '<span class="chip'+(d.tracking.velocidade>0?" mov":"")+'">'+(d.tracking.velocidade>0 ? d.tracking.velocidade+" km/h" : "parado")+"</span>";
+    (d.tracking.temps||[]).forEach((t,i)=>{
+      const vale = sensorVale(d.placa,i);
+      const bad = vale && alarmeVale(d) && t >= S.tempLimite;
+      const titulo = vale ? "S"+(i+1)+" — vale para o alarme" : "S"+(i+1)+" — ignorado no alarme (sensor fora do baú)";
+      h += '<span class="chip t'+(bad?" bad":"")+'" title="'+titulo+'"'+(vale?"":' style="opacity:.45"')+
+           ">🌡 "+t+"°C"+(bad?" ⚠":(vale?"":" ⃠"))+"</span>";
+    });
+    h += '<span class="ago">rastreio '+timeAgo(d.tracking.trackedAt)+"</span></div></div>";
+  } else {
+    h += '<button class="mini" style="width:100%;margin-top:10px;border:1px dashed var(--line);background:transparent" data-act="trkEdit" data-id="'+d.id+'">✏️ Adicionar rastreio</button>';
+  }
+  if(S.editEntregas === d.id){
+    const linhas = (d.entregas||[]).map(e => {
+      const notasTxt = (e.notas&&e.notas.length) ? e.notas.join(", ") : "";
+      // se tem rua, sempre mantém as 4 colunas (mesmo com NF vazia) pra não confundir rua com NF ao reabrir
+      return e.rua ? (e.cliente+" | "+e.destino+" | "+e.rua+" | "+notasTxt) : (e.cliente+" | "+e.destino+(notasTxt?" | "+notasTxt:""));
+    }).join("\n");
+    h += '<div class="edit ent">';
+    h += "<label>Entregas — uma por linha: <b>Cliente | Cidade/UF | Rua (opcional) | NFs</b></label>";
+    h += '<textarea data-f="ent" rows="4" placeholder="GR Serviços e Alimentação | São Paulo/SP | Rua Iguape | 194016">'+esc(linhas)+"</textarea>";
+    h += '<div style="display:flex;gap:8px;margin-top:4px">';
+    h += '<button class="mini" style="background:var(--teal);color:#fff" data-act="entSave" data-id="'+d.id+'">💾 Salvar</button>';
+    h += '<button class="mini" data-act="entCancel">Cancelar</button></div></div>';
+  } else if((d.entregas||[]).length){
+    const aberto = d.entAberto !== false;
+    h += '<div class="ent"><div class="enthead">';
+    h += '<button class="ttl" data-act="entTog" data-id="'+d.id+'" title="'+(aberto?"Minimizar":"Maximizar")+' entregas">';
+    h += "<span>📦 Entregas ("+rz.feitas+"/"+rz.total+")</span></button>";
+    h += '<button class="icobtn" data-act="entEdit" data-id="'+d.id+'" title="Editar/adicionar entregas">✏️</button>';
+    h += '<button class="minbtn" data-act="entTog" data-id="'+d.id+'" title="'+(aberto?"Minimizar":"Maximizar")+' as entregas">'+(aberto?"−":"+")+"</button></div>";
+    if(aberto){
+      h += '<div class="entlist">';
+      d.entregas.forEach((e,i)=>{
+        const isHere = (i===here) && !e.concluida;
+        const isNext = (i===prox) && !e.concluida;
+        h += '<div class="erow'+(isHere?" here":(isNext?" next":""))+'">';
+        h += '<input type="checkbox" data-act="tog" data-id="'+d.id+'" data-i="'+i+'"'+(e.concluida?" checked":"")+' />';
+        h += '<div style="flex:1;min-width:0">';
+        h += '<p class="ecli'+(e.concluida?" done":"")+'">'+esc(e.cliente)+"</p>";
+        h += '<div class="emeta">';
+        if(e.destino) h += "<span>"+esc(e.destino)+"</span>";
+        if(e.rua) h += '<span title="Usado pra bater com a rua do rastreio">'+esc(e.rua)+"</span>";
+        if(e.notas && e.notas.length) h += '<span class="mono">NF '+esc(e.notas.join(", "))+"</span>";
+        if(isHere) h += '<span class="badge-here">📍 no ponto</span>';
+        else if(isNext) h += '<span class="badge-next">próxima</span>';
+        h += "</div></div></div>";
+      });
+      h += "</div>";
+    } else {
+      const pi = (here>=0 ? here : prox);
+      if(pi >= 0 && d.entregas[pi]){
+        const e = d.entregas[pi];
+        h += '<p class="entpeek">'+(here>=0?"📍 no ponto: ":"→ próxima: ")+esc(e.cliente)+(e.destino?" — "+esc(e.destino):"")+"</p>";
+      } else {
+        h += '<p class="entpeek">✅ todas as entregas concluídas</p>';
+      }
+    }
+    h += "</div>";
+  } else {
+    h += '<button class="mini" style="width:100%;margin-top:8px;border:1px dashed var(--line);background:transparent" data-act="entEdit" data-id="'+d.id+'">✅ Adicionar entregas</button>';
+  }
+  if(d.semNf && d.status!=="finalizado"){
+    h += '<div class="semnf"><span>⚠ Sem NF na BSoft — provável fim de viagem</span>';
+    h += '<button class="mini" style="background:var(--amber);color:var(--asphalt)" data-act="fin" data-id="'+d.id+'">Finalizar</button></div>';
+  }
+  h += '<div class="navrow"><div class="arrows">';
+  h += '<button class="sq" data-act="prev" data-id="'+d.id+'"'+(stageIdx===0?" disabled":"")+">‹</button>";
+  h += '<button class="sq" data-act="next" data-id="'+d.id+'"'+(stageIdx===STAGES.length-1?" disabled":"")+">›</button>";
+  h += '</div><span class="upd">🕘 '+timeAgo(d.updatedAt)+"</span></div>";
+  h += '<div class="cardbtns">';
+  h += '<button class="mini upd" data-act="upd" data-id="'+d.id+'" title="Copie a tabela do Ca2Track (ou as linhas de entregas) e clique aqui — atualiza só este caminhão">🔄 Atualizar</button>';
+  h += '<button class="mini'+(d.problema?" on":"")+'" data-act="prob" data-id="'+d.id+'">⚠ '+(d.problema?"Ocorrência":"Marcar ocorrência")+"</button></div>";
+  if(S.cardMsg && S.cardMsg.id === d.id){
+    h += '<p class="cardmsg '+(S.cardMsg.tipo||"ok")+'">'+esc(S.cardMsg.texto)+"</p>";
+  }
+  h += "</div>";
+  return h;
+}
+function render(){
+  renderSub();
+  $("btnSom").textContent = S.somLigado ? "🔔 Som on" : "🔕 Som off";
+  $("btnSom").className = "btn " + (S.somLigado ? "btn-amber":"btn-ghost");
+  const fin = S.drivers.filter(d=>d.status==="finalizado").length;
+  $("btnArq").disabled = !fin;
+  $("btnArq").textContent = "🗄 Encerrar finalizados" + (fin?" ("+fin+")":"");
+  $("btnHist").textContent = S.view==="painel" ? "🕘 Histórico" : "🕘 Voltar ao painel";
+  $("btnHist").className = "btn " + (S.view==="historico" ? "btn-white":"btn-ghost");
+  if(S.view === "historico"){
+    $("board").style.display = "none";
+    $("histView").style.display = "block";
+    const q = S.query.trim().toUpperCase();
+    const list = S.arquivo.filter(d=>!q || (d.motorista||"").indexOf(q)!==-1 || (d.placa||"").indexOf(q)!==-1 || (d.mdfe||"").indexOf(q)!==-1);
+    let h = '<p style="font-size:13px;color:var(--muted);margin:0 0 14px">'+list.length+" viagem(ns) no histórico. Guarda tudo: finalizadas e removidas.</p>";
+    if(!list.length) h += '<div class="empty" style="padding:40px">Nenhuma viagem no histórico ainda.</div>';
+    list.forEach(d=>{
+      const st = STAGES.find(s=>s.key===(d.finalStatus||d.status));
+      h += '<div class="hcard'+(d.problema?" prob":"")+'"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">';
+      h += "<div><p class=\"drv\">"+esc(d.motorista)+'</p><div class="tags">';
+      h += '<span class="plate">'+esc(d.placa)+"</span>";
+      if(d.mdfe) h += '<span class="mdfe">MDF-e '+esc(d.mdfe)+"</span>";
+      if(st) h += '<span class="pill" style="background:'+st.color+'">'+st.label+"</span>";
+      if(d.motivo==="Removida") h += '<span class="pill" style="background:var(--muted)">Removida</span>';
+      if(d.problema) h += '<span style="font-size:11px;color:var(--alert);font-weight:600">⚠ teve ocorrência</span>';
+      h += "</div></div>";
+      h += '<span style="font-size:11px;color:var(--muted);white-space:nowrap">✅ '+(d.motivo||"Encerrada")+" em "+new Date(d.archivedAt).toLocaleDateString("pt-BR")+"</span>";
+      h += "</div>";
+      h += "</div>";
+    });
+    $("histView").innerHTML = h;
+    return;
+  }
+  $("histView").style.display = "none";
+  $("board").style.display = "block";
+  const q = S.query.trim().toUpperCase();
+  const vis = S.drivers.filter(d=>{
+    const okq = !q || (d.motorista||"").toUpperCase().indexOf(q)!==-1 || (d.placa||"").toUpperCase().indexOf(q)!==-1 || (d.mdfe||"").indexOf(q)!==-1;
+    const oks = S.statusFilter==="todos" || d.status===S.statusFilter;
+    return okq && oks;
+  });
+  let h = '<div class="grid">';
+  STAGES.forEach(s=>{
+    const items = vis.filter(d=>d.status===s.key);
+    h += '<div><div class="colhead" style="border-color:'+s.color+'">';
+    h += "<span>"+s.icon+'</span><span class="name">'+s.label+'</span><span class="count">'+items.length+"</span></div>";
+    h += '<div class="col">';
+    if(!items.length) h += '<div class="empty">vazio</div>';
+    items.forEach(d=>{ h += cardHTML(d); });
+    h += "</div></div>";
+  });
+  h += "</div>";
+  $("board").innerHTML = h;
+}
+document.addEventListener("click", (ev)=>{
+  const el = ev.target.closest("[data-act]");
+  if(!el) return;
+  const act = el.getAttribute("data-act");
+  const id  = el.getAttribute("data-id");
+  const d   = id ? driver(id) : null;
+  if(act==="upd" && d){ atualizarCard(id); return; }
+  if(act==="del" && d){
+    S.arquivo.unshift(Object.assign({}, d, {finalStatus:d.status, motivo:"Removida", archivedAt:Date.now()}));
+    S.drivers = S.drivers.filter(x=>x.id!==id);
+    save(); render(); return;
+  }
+  if(act==="prev" && d){ const i=STAGES.findIndex(s=>s.key===d.status); d.status=STAGES[Math.max(0,i-1)].key; touch(d); save(); render(); return; }
+  if(act==="next" && d){ const i=STAGES.findIndex(s=>s.key===d.status); d.status=STAGES[Math.min(STAGES.length-1,i+1)].key; touch(d); save(); render(); return; }
+  if(act==="fin"  && d){ d.status="finalizado"; touch(d); save(); render(); return; }
+  if(act==="prob" && d){ d.problema=!d.problema; touch(d); save(); render(); return; }
+  if(act==="trkEdit"){ S.editTracking=id; S.editEntregas=null; render(); return; }
+  if(act==="trkCancel"){ S.editTracking=null; render(); return; }
+  if(act==="trkSave" && d){
+    const box = el.closest(".edit");
+    const val = f => { const n = box.querySelector('[data-f="'+f+'"]'); return n ? n.value.trim() : ""; };
+    const temps = ["s1","s2","s3"].map(val).filter(v=>v!=="").map(Number).filter(v=>!isNaN(v));
+    d.tracking = { posicao:val("pos"), referencia:val("ref"), velocidade:Number(val("vel"))||0, temps, trackedAt:Date.now() };
+    S.editTracking=null; touch(d); save(); checkAlerts(); render(); return;
+  }
+  if(act==="entTog" && d){ d.entAberto = (d.entAberto === false); save(); render(); return; }
+  if(act==="entEdit"){ S.editEntregas=id; S.editTracking=null; render(); return; }
+  if(act==="entCancel"){ S.editEntregas=null; render(); return; }
+  if(act==="entSave" && d){
+    const ta = el.closest(".edit").querySelector('[data-f="ent"]');
+    const antes = {};
+    (d.entregas||[]).forEach(e=>{ antes[slug(e.cliente+" "+e.destino)] = e.concluida; });
+    d.entregas = String(ta.value||"").split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
+      const p = l.split("|").map(c=>c.trim());
+      const cliente = p[0]||"", destino = p[1]||"";
+      // "Cliente | Cidade/UF | NFs" (formato antigo, 3 colunas) continua funcionando;
+      // "Cliente | Cidade/UF | Rua | NFs" (4 colunas) já usa a rua também.
+      let rua = "", notasRaw = "";
+      if(p.length >= 4){ rua = p[2] || ""; notasRaw = p[3] || ""; }
+      else { notasRaw = p[2] || ""; }
+      const notas = notasRaw.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+      return { cliente, destino, rua, notas, concluida: !!antes[slug(cliente+" "+destino)] };
+    }).filter(e=>e.cliente);
+    if(d.entregas.length) d.semNf = false;
+    S.editEntregas=null; touch(d); save(); render(); return;
+  }
+});
+document.addEventListener("change", (ev)=>{
+  const el = ev.target.closest('[data-act="tog"]');
+  if(!el) return;
+  const d = driver(el.getAttribute("data-id"));
+  const i = parseInt(el.getAttribute("data-i"),10);
+  if(d && d.entregas && d.entregas[i]){ d.entregas[i].concluida = el.checked; touch(d); save(); render(); }
+});
+$("q").addEventListener("input", e=>{ S.query = e.target.value; render(); });
+$("filtro").addEventListener("change", e=>{ S.statusFilter = e.target.value; render(); });
+$("tempLimite").addEventListener("change", e=>{
+  S.tempLimite = Number(e.target.value);
+  baseline = false; alertados = new Set();
+  checkAlerts(); render();
+});
+$("btnSom").addEventListener("click", ()=>{
+  S.somLigado = !S.somLigado;
+  if(S.somLigado){ silencioAte = 0; playTone("chegada"); }
+  else { pararAlarme(); }
+  render();
+});
+$("btnVoz").addEventListener("click", ()=>{
+  silencioAte = 0;
+  falarTempFora([{ placa:"BDN-2400", motorista:"Thiago Rodrigues Xavier", tracking:{ temps:[-9] } }]);
+});
+$("btnParar").addEventListener("click", pararAlarme);
+$("btnSilenciar").addEventListener("click", ()=> silenciarAlarme(30));
+document.addEventListener("keydown", (e)=>{ if(e.key === "Escape") pararAlarme(); });
+$("btnImp").addEventListener("click", ()=>{
+  $("panelImp").style.display = $("panelImp").style.display==="none" ? "block":"none";
+  $("msgImp").textContent = ""; $("txtImp").focus();
+});
+$("btnImpClose").addEventListener("click", ()=>{ $("panelImp").style.display="none"; $("txtImp").value=""; $("msgImp").textContent=""; });
+$("btnImpOk").addEventListener("click", importTracking);
+$("txtImp").addEventListener("keydown", e=>{ if((e.ctrlKey||e.metaKey) && e.key==="Enter") importTracking(); });
+$("btnColar").addEventListener("click", async ()=>{
+  try{
+    const t = await navigator.clipboard.readText();
+    if(t && t.trim().length>15){ $("txtImp").value = t; $("msgImp").textContent = "Colado. Confira e clique em Atualizar veículos."; return; }
+  }catch(e){}
+  $("msgImp").textContent = "Não consegui ler a área de transferência. Cole manualmente com Ctrl+V.";
+  $("txtImp").focus();
+});
+$("btnImpEnt").addEventListener("click", ()=>{
+  $("panelEnt").style.display = $("panelEnt").style.display==="none" ? "block":"none";
+  $("msgEnt").textContent = ""; $("txtEnt").focus();
+});
+$("btnEntClose").addEventListener("click", ()=>{ $("panelEnt").style.display="none"; $("txtEnt").value=""; $("msgEnt").textContent=""; });
+$("btnEntOk").addEventListener("click", importEntregas);
+$("txtEnt").addEventListener("keydown", e=>{ if((e.ctrlKey||e.metaKey) && e.key==="Enter") importEntregas(); });
+$("btnAdd").addEventListener("click", ()=>{ $("panelAdd").style.display = $("panelAdd").style.display==="none" ? "block":"none"; $("addMot").focus(); });
+$("btnAddClose").addEventListener("click", ()=>{ $("panelAdd").style.display="none"; });
+$("btnAddOk").addEventListener("click", ()=>{
+  const m = $("addMot").value.trim(), p = $("addPlaca").value.trim();
+  if(!m || !p) return;
+  S.drivers.unshift({ id:"d-"+Date.now(), motorista:m.toUpperCase(), placa:p.toUpperCase(), mdfe:$("addMdfe").value.trim(),
+    status:"carregando", problema:false, obs:"", updatedAt:Date.now(), tracking:null, entregas:[], semNf:false });
+  $("addMot").value=""; $("addPlaca").value=""; $("addMdfe").value="";
+  $("panelAdd").style.display="none"; save(); render();
+});
+$("btnArq").addEventListener("click", ()=>{
+  const fin = S.drivers.filter(d=>d.status==="finalizado");
+  if(!fin.length) return;
+  fin.forEach(d=> S.arquivo.unshift(Object.assign({}, d, {finalStatus:"finalizado", motivo:"Finalizada", archivedAt:Date.now()})));
+  S.drivers = S.drivers.filter(d=>d.status!=="finalizado");
+  save(); render();
+});
+$("btnHist").addEventListener("click", ()=>{ S.view = S.view==="painel" ? "historico":"painel"; render(); });
+const SENS_KEY = "painel-viagens-sensores";
+const PREF_KEY = "painel-viagens-pref";
+function carregarPrefs(){
+  try{
+    if(!HAS_LS) return;
+    const s = localStorage.getItem(SENS_KEY); if(s) S.sensores = JSON.parse(s);
+    const p = localStorage.getItem(PREF_KEY);
+    if(p){ const o = JSON.parse(p); if(typeof o.tempLimite === "number") S.tempLimite = o.tempLimite; }
+  }catch(e){}
+}
+function gravarPrefs(){
+  try{
+    if(!HAS_LS) return;
+    localStorage.setItem(SENS_KEY, JSON.stringify(S.sensores));
+    localStorage.setItem(PREF_KEY, JSON.stringify({tempLimite:S.tempLimite}));
+  }catch(e){}
+}
+function aviso(id, txt){
+  const el = $(id); if(!el) return;
+  el.textContent = txt; el.className = "ok on";
+  clearTimeout(aviso["t"+id]);
+  aviso["t"+id] = setTimeout(()=>{ el.className = "ok"; }, 5000);
+}
+function abrirCfg(){
+  $("cfg").className = "on"; desenharUsuarios(); desenharSensores();
+  $("cfgLimite").value = S.tempLimite;
+  const a = lerApiCfg();
+  $("apiUsr").value = a.usuario || "";
+  $("apiPwd").value = a.senha || "";
+  $("apiSalvar").checked = !!a.senha || a.senha === undefined;
+  $("apiAuto").checked = !!a.auto;
+  $("apiIntervalo").value = a.intervalo || 2;
+  const sc = lerSync();
+  $("sbUrl").value = sc.url || "";
+  $("sbKey").value = sc.key || "";
+  $("sbQuadro").value = sc.quadro || "transload";
+  $("sbAtivo").checked = !!sc.ativo;
+}
+function fecharCfg(){ $("cfg").className = ""; }
+function desenharUsuarios(){
+  const lista = lerUsuarios();
+  const eu = usuarioAtual();
+  let h = "<tr><th>Usuário</th><th>Nome</th><th></th></tr>";
+  h += "<tr><td><b>caiopagani</b>"+(eu==="caiopagani"?'<span class="tagvoce">você</span>':"")+
+       '</td><td style="color:var(--muted)">Acesso principal</td>'+
+       '<td style="color:var(--muted);font-size:11.5px">fixo</td></tr>';
+  lista.forEach(u=>{
+    h += "<tr><td><b>"+esc(u.u)+"</b>"+(eu===u.u?'<span class="tagvoce">você</span>':"")+"</td>"+
+         '<td style="color:var(--muted)">'+esc(u.nome||"—")+"</td>"+
+         '<td><button class="remover" data-rmusr="'+esc(u.u)+'">remover</button></td></tr>';
+  });
+  if(!lista.length) h += '<tr><td colspan="3" style="color:var(--muted);font-style:italic;padding:12px 8px">Nenhum usuário extra cadastrado ainda.</td></tr>';
+  $("tabUsr").innerHTML = h;
+}
+function desenharSensores(){
+  const comTemp = S.drivers.filter(d => d.tracking && (d.tracking.temps||[]).length);
+  if(!comTemp.length){
+    $("tabSens").innerHTML = '<tr><td style="color:var(--muted);font-style:italic;padding:12px 8px">Importe o rastreamento para os sensores aparecerem aqui.</td></tr>';
+    return;
+  }
+  let h = "<tr><th>Veículo</th><th>Sensores que valem para o alarme</th></tr>";
+  comTemp.forEach(d=>{
+    const temps = d.tracking.temps || [];
+    let cx = '<div class="sens">';
+    temps.forEach((t,i)=>{
+      const vale = sensorVale(d.placa,i);
+      cx += '<label><input type="checkbox" data-sens="'+esc(d.placa)+'" data-i="'+i+'"'+(vale?" checked":"")+" /> S"+(i+1)+
+            ' <span style="color:var(--muted)">('+t+"°C)</span></label>";
+    });
+    cx += "</div>";
+    h += "<tr><td><b>"+esc(d.placa)+'</b><br><span style="color:var(--muted);font-size:11px">'+esc(d.motorista)+"</span></td><td>"+cx+"</td></tr>";
+  });
+  $("tabSens").innerHTML = h;
+}
+function exportarBackup(){
+  const dados = {
+    versao: 1,
+    exportadoEm: new Date().toISOString(),
+    motoristas: S.drivers,
+    historico: S.arquivo,
+    usuarios: lerUsuarios(),
+    sensores: S.sensores,
+    tempLimite: S.tempLimite,
+  };
+  const blob = new Blob([JSON.stringify(dados,null,1)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const p2 = n => String(n).padStart(2,"0");
+  a.download = "painel-viagens-backup-"+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes())+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  aviso("okDados","Backup baixado. Guarde o arquivo ou leve-o para os outros computadores.");
+}
+function importarBackup(txt){
+  let o;
+  try{ o = JSON.parse(txt); }catch(e){ aviso("okDados","Arquivo inválido — não parece um backup do painel."); return; }
+  if(!o || !Array.isArray(o.motoristas)){ aviso("okDados","Arquivo inválido — não encontrei as viagens dentro dele."); return; }
+  S.drivers = o.motoristas;
+  S.arquivo = Array.isArray(o.historico) ? o.historico : [];
+  if(o.sensores) S.sensores = o.sensores;
+  if(typeof o.tempLimite === "number"){ S.tempLimite = o.tempLimite; $("tempLimite").value = o.tempLimite; $("cfgLimite").value = o.tempLimite; }
+  if(Array.isArray(o.usuarios)) gravarUsuarios(o.usuarios);
+  const VALIDOS = new Set(STAGES.map(s=>s.key));
+  S.drivers.forEach(d=>{ if(!VALIDOS.has(d.status)) d.status = "no_cliente"; });
+  save(); gravarPrefs(); desenharUsuarios(); desenharSensores(); render();
+  aviso("okDados", S.drivers.length+" veículo(s) e "+S.arquivo.length+" registro(s) de histórico restaurados.");
+}
+const ART = !!(typeof window !== "undefined" && window.storage &&
+               typeof window.storage.get === "function" && typeof window.storage.set === "function");
+let artTimer = null, artUltimoEnvio = 0;
+async function artLer(chave){
+  try{ const r = await window.storage.get(chave, true); return (r && r.value) ? r.value : null; }
+  catch(e){ return null; }
+}
+async function artGravar(chave, valor){
+  try{ await window.storage.set(chave, valor, true); return true; }catch(e){ return false; }
+}
+async function artPuxar(){
+  if(!ART) return;
+  const [m, h] = await Promise.all([ artLer(STORAGE_KEY), artLer(HISTORY_KEY) ]);
+  if(!m && !h) return;
+  let remotoM = [], remotoH = [];
+  try{ remotoM = m ? JSON.parse(m) : []; }catch(e){}
+  try{ remotoH = h ? JSON.parse(h) : []; }catch(e){}
+  const juntos = S.maquinaNova
+    ? { motoristas: remotoM, historico: remotoH }
+    : mesclarQuadro({motoristas:S.drivers, historico:S.arquivo},
+                    {motoristas:remotoM,   historico:remotoH});
+  S.maquinaNova = false;
+  const mudou = JSON.stringify(juntos.motoristas) !== JSON.stringify(S.drivers) ||
+                JSON.stringify(juntos.historico)  !== JSON.stringify(S.arquivo);
+  S.drivers = juntos.motoristas;
+  S.arquivo = juntos.historico;
+  if(mudou){
+    salvandoDoServidor = true;
+    try{ if(HAS_LS){ localStorage.setItem(STORAGE_KEY, JSON.stringify(S.drivers));
+                     localStorage.setItem(HISTORY_KEY, JSON.stringify(S.arquivo)); } }catch(e){}
+    salvandoDoServidor = false;
+    render(); checkAlerts();
+  }
+}
+async function artEnviar(){
+  if(!ART) return;
+  await artGravar(STORAGE_KEY, JSON.stringify(S.drivers));
+  await artGravar(HISTORY_KEY, JSON.stringify(S.arquivo));
+  artUltimoEnvio = Date.now();
+}
+let artEnvioTimer = null;
+function artMarcarAlteracao(){
+  if(!ART) return;
+  clearTimeout(artEnvioTimer);
+  artEnvioTimer = setTimeout(()=>{ artEnviar().catch(()=>{}); }, 700);
+}
+function ligarArtefato(){
+  if(!ART) return;
+  artPuxar().catch(()=>{});
+  if(artTimer) clearInterval(artTimer);
+  artTimer = setInterval(()=>{ artPuxar().catch(()=>{}); }, 8000);
+}
+const SYNC_KEY = "painel-viagens-sync";
+let syncTimer = null, enviarTimer = null;
+let ultimoEnvioNosso = 0;
+let ultimoSyncOk = 0;
+function lerSync(){
+  try{ const r = HAS_LS ? localStorage.getItem(SYNC_KEY) : null; return r ? JSON.parse(r) : {}; }
+  catch(e){ return {}; }
+}
+function gravarSync(o){ try{ if(HAS_LS) localStorage.setItem(SYNC_KEY, JSON.stringify(o)); }catch(e){} }
+function syncLigado(){ const c = lerSync(); return !!(c.ativo && c.url && c.key); }
+function sbHeaders(c){
+  return { "apikey": c.key, "Authorization": "Bearer " + c.key, "Content-Type": "application/json" };
+}
+async function sbLer(c){
+  const u = c.url.replace(/\/+$/,"") + "/rest/v1/painel?id=eq." + encodeURIComponent(c.quadro||"transload") + "&select=*";
+  const r = await fetch(u, { headers: sbHeaders(c) });
+  if(!r.ok) throw new Error("HTTP " + r.status + " ao ler");
+  const j = await r.json();
+  return Array.isArray(j) && j.length ? j[0] : null;
+}
+async function sbGravar(c, dados){
+  const u = c.url.replace(/\/+$/,"") + "/rest/v1/painel";
+  const corpo = [{ id: c.quadro||"transload", dados: dados, atualizado_em: new Date().toISOString(), por: usuarioAtual()||"painel" }];
+  const r = await fetch(u, { method:"POST",
+    headers: Object.assign(sbHeaders(c), {"Prefer":"resolution=merge-duplicates,return=minimal"}),
+    body: JSON.stringify(corpo) });
+  if(!r.ok){ const t = await r.text().catch(()=> ""); throw new Error("HTTP " + r.status + " ao gravar " + t.slice(0,120)); }
+}
+function mesclarQuadro(local, remoto){
+  const porId = {};
+  (remoto.motoristas||[]).forEach(d=>{ porId[d.id] = d; });
+  (local.motoristas||[]).forEach(d=>{
+    const r = porId[d.id];
+    if(!r || (d.updatedAt||0) >= (r.updatedAt||0)) porId[d.id] = d;
+  });
+  const arq = {};
+  [].concat(remoto.historico||[], local.historico||[]).forEach(h=>{ if(h && h.id) arq[h.id] = h; });
+  Object.keys(arq).forEach(id => { delete porId[id]; });
+  return {
+    motoristas: Object.keys(porId).map(k=>porId[k]),
+    historico: Object.keys(arq).map(k=>arq[k]).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0)),
+    sensores: Object.assign({}, remoto.sensores||{}, local.sensores||{}),
+    tempLimite: (typeof local.tempLimite === "number") ? local.tempLimite : remoto.tempLimite,
+  };
+}
+function estadoLocal(){
+  return { motoristas:S.drivers, historico:S.arquivo, sensores:S.sensores, tempLimite:S.tempLimite };
+}
+async function puxarDoServidor(){
+  const c = lerSync();
+  if(!syncLigado()) return;
+  const linha = await sbLer(c);
+  if(!linha || !linha.dados){
+    S.maquinaNova = false;
+    ultimoSyncOk = Date.now();
+    return;
+  }
+  const carimbo = new Date(linha.atualizado_em).getTime();
+  if(carimbo <= ultimoEnvioNosso) { ultimoSyncOk = Date.now(); return; }
+  const juntos = S.maquinaNova ? linha.dados : mesclarQuadro(estadoLocal(), linha.dados);
+  S.maquinaNova = false;
+  S.drivers = juntos.motoristas;
+  S.arquivo = juntos.historico;
+  if(juntos.sensores) S.sensores = juntos.sensores;
+  ultimoSyncOk = Date.now();
+  salvandoDoServidor = true;
+  save(); render();
+  salvandoDoServidor = false;
+}
+async function enviarAoServidor(){
+  const c = lerSync();
+  if(!syncLigado()) return;
+  if(S.maquinaNova) return;
+  await sbGravar(c, estadoLocal());
+  ultimoEnvioNosso = Date.now() + 1500;
+  ultimoSyncOk = Date.now();
+}
+function marcarAlteracao(){
+  if(!syncLigado()) return;
+  clearTimeout(enviarTimer);
+  enviarTimer = setTimeout(()=>{ enviarAoServidor().catch(()=>{}); }, 1800);
+}
+function ligarSync(){
+  pararSync();
+  if(!syncLigado()) return;
+  puxarDoServidor().catch(()=>{});
+  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 10000);
+}
+function pararSync(){ if(syncTimer){ clearInterval(syncTimer); syncTimer = null; } }
+const API_BASE = "https://ca2soft.com.br/itransrisco";
+const API_KEY  = "painel-viagens-api";
+let apiToken = null, apiTimer = null;
+function lerApiCfg(){
+  try{ const r = HAS_LS ? localStorage.getItem(API_KEY) : null; return r ? JSON.parse(r) : {}; }
+  catch(e){ return {}; }
+}
+function gravarApiCfg(o){ try{ if(HAS_LS) localStorage.setItem(API_KEY, JSON.stringify(o)); }catch(e){} }
+async function apiPost(rota, corpo, token){
+  const h = {"Content-Type":"application/json"};
+  if(token) h["Authorization"] = "Bearer " + token;
+  const r = await fetch(API_BASE + rota, { method:"POST", headers:h, body: JSON.stringify(corpo||{}) });
+  let j = null;
+  try{ j = await r.json(); }catch(e){}
+  return { http:r.status, body:j };
+}
+async function apiLogin(usuario, senha){
+  const r = await apiPost("/usuario/login", { usuario:usuario, senha:senha });
+  const res = r.body && r.body.result;
+  if(r.body && r.body.status && res){
+    if(typeof res === "string") return res;
+    const t = res.token || res.jwt || res.access_token || res.accessToken;
+    if(t) return String(t);
+  }
+  const msg = (typeof res === "string" ? res : null) ||
+              (r.body && (r.body.mensagem || r.body.message || r.body.erro)) ||
+              ("HTTP " + r.http);
+  throw new Error("LOGIN: " + msg);
+}
+async function apiFrota(token){
+  const r = await apiPost("/rastreamento/listar", { tipo:"desktop" }, token);
+  if(r.http === 401) throw new Error("401");
+  if(r.body && r.body.result != null) return r.body.result;
+  if(Array.isArray(r.body)) return r.body;
+  throw new Error("Resposta sem 'result' (HTTP " + r.http + ")");
+}
+function achaCampo(obj, padroes){
+  if(!obj || typeof obj !== "object") return undefined;
+  for(const k of Object.keys(obj)){
+    const kn = slug(k).replace(/ /g,"");
+    if(padroes.some(p => kn === p || kn.indexOf(p) !== -1)){
+      const v = obj[k];
+      if(v !== null && v !== "" && typeof v !== "object") return v;
+    }
+  }
+  for(const k of Object.keys(obj)){
+    const v = obj[k];
+    if(v && typeof v === "object" && !Array.isArray(v)){
+      const r = achaCampo(v, padroes);
+      if(r !== undefined) return r;
+    }
+  }
+  return undefined;
+}
+function temperaturasDe(obj){
+  const t = [];
+  for(let i=1;i<=3;i++){
+    const v = achaCampo(obj, ["s"+i+"temp","temp"+i,"temperatura"+i,"sensor"+i]);
+    const n = Number(String(v).replace(",","."));
+    if(v !== undefined && !isNaN(n)) t.push(Math.round(n));
+  }
+  if(!t.length){
+    const v = achaCampo(obj, ["temperatura","temp"]);
+    const n = Number(String(v).replace(",","."));
+    if(v !== undefined && !isNaN(n)) t.push(Math.round(n));
+  }
+  return t;
+}
+function parseQualquerData(s){
+  if(!s) return null;
+  const t = String(s).trim();
+  let m = t.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  return parseBrDateTime(t);
+}
+function mapearVeiculo(o){
+  if(!o) return null;
+  const placa = o.placa || achaCampo(o, ["placa","veiculoplaca","placaveiculo"]);
+  if(!placa) return null;
+  const temps = [];
+  ["st1","st2","st3"].forEach(k=>{
+    const v = o[k];
+    if(v === null || v === undefined || v === "") return;
+    const n = parseFloat(String(v).replace(",",".").replace(/[^0-9.,-]/g,""));
+    if(!isNaN(n)) temps.push(Math.round(n));
+  });
+  if(!temps.length) temperaturasDe(o).forEach(t=>temps.push(t));
+  const vel = Number(o.velocidade != null ? o.velocidade : achaCampo(o, ["velocidade","kmh","vel"])) || 0;
+  const pos = o.posicao != null ? o.posicao : achaCampo(o, ["endereco","posicao","logradouro","local"]);
+  const ref = o.referencia != null ? o.referencia : achaCampo(o, ["referencia","pontoreferencia","ponto"]);
+  const dh  = o.datahora != null ? o.datahora : achaCampo(o, ["datahora","dtposicao","data","dh"]);
+  return {
+    placa: normalizePlaca(placa),
+    motorista: o.motorista || "",
+    tracking: {
+      posicao: pos ? String(pos) : "",
+      referencia: ref ? String(ref) : "",
+      velocidade: Math.round(vel),
+      temps: temps,
+      trackedAt: parseQualquerData(dh) || Date.now(),
+    }
+  };
+}
+function listaDaResposta(result){
+  if(Array.isArray(result)) return result;
+  if(result && typeof result === "object"){
+    for(const k of Object.keys(result)){
+      if(Array.isArray(result[k]) && result[k].length && typeof result[k][0] === "object") return result[k];
+    }
+  }
+  return [];
+}
+async function sincronizarApi(){
+  const cfg = lerApiCfg();
+  const usr = cfg.usuario, pwd = cfg.senha;
+  if(!usr || !pwd) throw new Error("Informe usuário e senha do Ca2Track.");
+  if(!apiToken) apiToken = await apiLogin(usr, pwd);
+  let result;
+  try{ result = await apiFrota(apiToken); }
+  catch(e){
+    if(String(e.message) === "401"){
+      apiToken = await apiLogin(usr, pwd);
+      result = await apiFrota(apiToken);
+    } else throw e;
+  }
+  const lista = listaDaResposta(result);
+  ultimoBruto = lista.length ? lista[0] : result;
+  const mapeados = lista.map(mapearVeiculo).filter(Boolean);
+  const porPlaca = {};
+  mapeados.forEach(m=>{ porPlaca[m.placa] = m; });
+  let atualizados = 0;
+  S.drivers.forEach(d=>{
+    const m = porPlaca[normalizePlaca(d.placa)];
+    if(m){ d.tracking = m.tracking; touch(d); atualizados++; }
+  });
+  const foraDoPainel = Object.keys(porPlaca)
+    .filter(p => !S.drivers.some(d => normalizePlaca(d.placa) === p))
+    .map(p => porPlaca[p].placa + (porPlaca[p].motorista ? " ("+porPlaca[p].motorista+")" : ""));
+  const mudStatus = aplicarStatusAuto();
+  S.lastImportAt = Date.now();
+  save(); checkAlerts(); render();
+  return { recebidos: lista.length, lidos: mapeados.length, atualizados: atualizados,
+           status: mudStatus, fora: foraDoPainel };
+}
+let ultimoBruto = null;
+function pararAuto(){ if(apiTimer){ clearInterval(apiTimer); apiTimer = null; } }
+function ligarAuto(minutos){
+  pararAuto();
+  const ms = Math.max(0.1, Number(minutos)||2) * 60000;
+  apiTimer = setInterval(()=>{
+    sincronizarApi().catch(e=>{
+      aviso("okApi","Falha na atualização automática: " + e.message + " — o automático continua tentando.");
+    });
+  }, ms);
+}
+const AUTH_KEY = "painel-viagens-acesso";
+const USR_H = "uo7xm9";
+const PWD_H = "vejxmd";
+function emb(s){
+  let x = 5381;
+  const t = String(s||"").trim();
+  for(let i=0;i<t.length;i++){ x = (((x<<5)+x) ^ t.charCodeAt(i)) >>> 0; }
+  return x.toString(36);
+}
+const USERS_KEY = "painel-viagens-usuarios";
+function lerUsuarios(){
+  try{ const r = HAS_LS ? localStorage.getItem(USERS_KEY) : null; return r ? JSON.parse(r) : []; }
+  catch(e){ return []; }
+}
+function gravarUsuarios(l){ try{ if(HAS_LS) localStorage.setItem(USERS_KEY, JSON.stringify(l)); }catch(e){} }
+function credencialOk(u,p){
+  const un = String(u||"").trim().toLowerCase();
+  if(emb(un) === USR_H && emb(p) === PWD_H) return true;
+  return lerUsuarios().some(x => x.u === un && x.h === emb(p));
+}
+function quemEntrou(u){
+  const un = String(u||"").trim().toLowerCase();
+  if(emb(un) === USR_H) return "caiopagani";
+  const x = lerUsuarios().find(y => y.u === un);
+  return x ? x.u : un;
+}
+function estaLogado(){
+  try{
+    if(sessionStorage.getItem(AUTH_KEY) === "1") return true;
+    if(HAS_LS && localStorage.getItem(AUTH_KEY) === "1") return true;
+  }catch(e){}
+  return false;
+}
+function entrar(lembrar, usuario){
+  try{
+    sessionStorage.setItem(AUTH_KEY,"1");
+    sessionStorage.setItem(AUTH_KEY+"-quem", usuario||"");
+    if(lembrar && HAS_LS){
+      localStorage.setItem(AUTH_KEY,"1");
+      localStorage.setItem(AUTH_KEY+"-quem", usuario||"");
+    }
+  }catch(e){}
+  abrirPainel();
+}
+function usuarioAtual(){
+  try{ return sessionStorage.getItem(AUTH_KEY+"-quem") || (HAS_LS ? localStorage.getItem(AUTH_KEY+"-quem") : "") || ""; }
+  catch(e){ return ""; }
+}
+function sair(){
+  pararAlarme();
+  try{
+    sessionStorage.removeItem(AUTH_KEY);
+    if(HAS_LS) localStorage.removeItem(AUTH_KEY);
+  }catch(e){}
+  $("app").className = "";
+  $("login").style.display = "flex";
+  $("pwd").value = "";
+  $("loginErro").className = "erro";
+  setTimeout(()=>$("usr").focus(), 60);
+}
+function abrirPainel(){
+  $("login").style.display = "none";
+  $("app").className = "on";
+  if(!abrirPainel._pronto){ iniciarPainel(); abrirPainel._pronto = true; }
+}
+$("loginForm").addEventListener("submit", (e)=>{
+  e.preventDefault();
+  const u = $("usr").value, p = $("pwd").value;
+  if(credencialOk(u,p)){ entrar($("lembrar").checked, quemEntrou(u)); }
+  else {
+    $("loginErro").className = "erro on";
+    $("pwd").value = "";
+    $("pwd").focus();
+  }
+});
+$("btnSair").addEventListener("click", sair);
+$("btnCfg").addEventListener("click", abrirCfg);
+$("cfgFechar").addEventListener("click", fecharCfg);
+$("cfg").addEventListener("click", (e)=>{ if(e.target.id === "cfg") fecharCfg(); });
+document.querySelectorAll("#cfg .aba").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll("#cfg .aba").forEach(x=>x.className="aba");
+    document.querySelectorAll("#cfg .pag").forEach(x=>x.className="pag");
+    b.className = "aba sel";
+    $("pag-"+b.getAttribute("data-pag")).className = "pag sel";
+  });
+});
+$("btnAddUsr").addEventListener("click", ()=>{
+  const u = $("novoUsr").value.trim().toLowerCase();
+  const nome = $("novoNome").value.trim();
+  const p = $("novoPwd").value;
+  if(!u || !p){ aviso("okUsr","Preencha o usuário e a senha."); return; }
+  if(/\s/.test(u)){ aviso("okUsr","O usuário não pode ter espaços — use ponto, ex: joao.silva"); return; }
+  if(u === "caiopagani" || lerUsuarios().some(x=>x.u===u)){ aviso("okUsr","Já existe um usuário com esse nome."); return; }
+  if(p.length < 4){ aviso("okUsr","A senha precisa de pelo menos 4 caracteres."); return; }
+  const l = lerUsuarios(); l.push({u:u, nome:nome, h:emb(p)}); gravarUsuarios(l);
+  $("novoUsr").value=""; $("novoNome").value=""; $("novoPwd").value="";
+  desenharUsuarios();
+  aviso("okUsr","Usuário "+u+" criado. Ele já pode entrar neste computador.");
+});
+$("tabUsr").addEventListener("click", (e)=>{
+  const b = e.target.closest("[data-rmusr]"); if(!b) return;
+  const u = b.getAttribute("data-rmusr");
+  if(!confirm("Remover o usuário "+u+"? Ele perde o acesso neste computador.")) return;
+  gravarUsuarios(lerUsuarios().filter(x=>x.u!==u));
+  desenharUsuarios();
+  aviso("okUsr","Usuário "+u+" removido.");
+});
+$("cfgLimite").addEventListener("change", (e)=>{
+  S.tempLimite = Number(e.target.value);
+  $("tempLimite").value = S.tempLimite;
+  baseline = false; alertados = new Set();
+  gravarPrefs(); checkAlerts(); render(); desenharSensores();
+  aviso("okAlertas","Alerta passa a disparar ao atingir "+S.tempLimite+" °C.");
+});
+$("btnTestarVoz").addEventListener("click", ()=>{
+  silencioAte = 0;
+  falarTempFora([{ placa:"BDN-2400", motorista:"Thiago Rodrigues Xavier", tracking:{ temps:[-9] } }]);
+});
+$("btnSilenciar30").addEventListener("click", ()=>{ silenciarAlarme(30); aviso("okAlertas","Alarme silenciado por 30 minutos."); });
+$("tabSens").addEventListener("change", (e)=>{
+  const el = e.target.closest("[data-sens]"); if(!el) return;
+  const placa = normalizePlaca(el.getAttribute("data-sens"));
+  const d = S.drivers.find(x=>normalizePlaca(x.placa)===placa);
+  const total = d && d.tracking ? (d.tracking.temps||[]).length : 0;
+  const marcados = [];
+  document.querySelectorAll('[data-sens="'+el.getAttribute("data-sens")+'"]').forEach(c=>{
+    if(c.checked) marcados.push(Number(c.getAttribute("data-i"))+1);
+  });
+  if(marcados.length === total) delete S.sensores[placa];
+  else S.sensores[placa] = marcados;
+  gravarPrefs();
+  baseline = false; alertados = new Set();
+  checkAlerts(); render();
+  aviso("okAlertas", marcados.length ? ("Placa "+el.getAttribute("data-sens")+": alarme só pelos sensores S"+marcados.join(", S")+".")
+                                     : ("Placa "+el.getAttribute("data-sens")+": nenhum sensor dispara alarme."));
+});
+function salvarSyncDaTela(){
+  const c = {
+    url: $("sbUrl").value.trim(),
+    key: $("sbKey").value.trim(),
+    quadro: ($("sbQuadro").value.trim() || "transload"),
+    ativo: $("sbAtivo").checked,
+  };
+  gravarSync(c);
+  return c;
+}
+$("btnTestarSync").addEventListener("click", async ()=>{
+  const c = salvarSyncDaTela();
+  if(!c.url || !c.key){ aviso("okSync","Cole o Project URL e a chave anon."); return; }
+  aviso("okSync","Testando…");
+  try{
+    await sbLer(c);
+    $("sbAtivo").checked = true;
+    gravarSync(Object.assign(c,{ativo:true}));
+    await enviarAoServidor();
+    ligarSync();
+    aviso("okSync","✅ Conectado! O quadro deste computador foi enviado. Quem abrir o painel com estas mesmas chaves vê o mesmo quadro.");
+  }catch(e){
+    const m = String(e.message||e);
+    aviso("okSync", /Failed to fetch|NetworkError/i.test(m)
+      ? "❌ Não alcancei o servidor. Confira o Project URL."
+      : (/401|403/.test(m) ? "❌ Chave recusada — confira se copiou a chave 'anon public'."
+      : (/404|42P01/.test(m) ? "❌ A tabela 'painel' não existe. Rode o SQL do passo a passo abaixo."
+      : "❌ "+m)));
+  }
+});
+$("btnEnviarAgora").addEventListener("click", async ()=>{
+  salvarSyncDaTela();
+  try{ await enviarAoServidor(); aviso("okSync","✅ Quadro enviado para a equipe."); }
+  catch(e){ aviso("okSync","❌ "+(e.message||e)); }
+});
+$("sbAtivo").addEventListener("change", ()=>{
+  const c = salvarSyncDaTela();
+  if(c.ativo){ ligarSync(); aviso("okSync","Sincronização ligada."); }
+  else { pararSync(); aviso("okSync","Sincronização desligada — este computador volta a trabalhar sozinho."); }
+});
+function salvarApiDaTela(){
+  const cfg = {
+    usuario: $("apiUsr").value.trim(),
+    senha: $("apiSalvar").checked ? $("apiPwd").value : "",
+    auto: $("apiAuto").checked,
+    intervalo: Number($("apiIntervalo").value)||2,
+  };
+  gravarApiCfg(cfg);
+  return cfg;
+}
+function mostrarBruto(){
+  $("apiBruto").textContent = ultimoBruto ? JSON.stringify(ultimoBruto,null,1).slice(0,4000) : "— sem dados —";
+}
+$("btnTestarApi").addEventListener("click", async ()=>{
+  const usr = $("apiUsr").value.trim(), pwd = $("apiPwd").value;
+  if(!usr || !pwd){ aviso("okApi","Preencha usuário e senha do Ca2Track."); return; }
+  aviso("okApi","Testando…");
+  try{
+    const token = await apiLogin(usr, pwd);
+    apiToken = token;
+    gravarApiCfg({usuario:usr, senha: $("apiSalvar").checked ? pwd : "", auto:$("apiAuto").checked, intervalo:Number($("apiIntervalo").value)||2});
+    const result = await apiFrota(token);
+    const lista = listaDaResposta(result);
+    ultimoBruto = lista.length ? lista[0] : result;
+    mostrarBruto();
+    const ok = lista.map(mapearVeiculo).filter(Boolean).length;
+    aviso("okApi","✅ Conectado! O servidor devolveu "+lista.length+" veículo(s) e eu consegui ler "+ok+
+                  ". Já pode ligar a atualização automática." + (ok<lista.length ? " (alguns registros vieram em formato diferente — me mostre a resposta bruta que eu ajusto)" : ""));
+  }catch(e){
+    const m = String(e && e.message || e);
+    if(m.indexOf("LOGIN:") === 0){
+      aviso("okApi","❌ O servidor respondeu, mas recusou o login: "+m.replace("LOGIN: ","")+
+                    ". A boa notícia é que a conexão em si funciona — confira usuário e senha.");
+    } else if(/Failed to fetch|NetworkError|CORS|Load failed/i.test(m)){
+      aviso("okApi","⚠ O navegador bloqueou a conexão (CORS) — não é senha errada. O servidor do CA2 precisa "+
+                    "autorizar este acesso. Peça ao suporte do CA2 Soft para liberar o uso da API a partir do "+
+                    "navegador, ou hospede o painel num servidor autorizado por eles. Até lá, siga usando o copiar e colar.");
+    } else {
+      aviso("okApi","❌ Não consegui: "+m);
+    }
+    mostrarBruto();
+  }
+});
+$("btnSincAgora").addEventListener("click", async ()=>{
+  salvarApiDaTela();
+  aviso("okApi","Buscando…");
+  try{
+    const r = await sincronizarApi();
+    mostrarBruto();
+    aviso("okApi","✅ "+r.atualizados+" veículo(s) do painel atualizado(s) (o servidor mandou "+r.recebidos+")."+
+                  (r.status? " "+r.status+" status ajustado(s).":"")+
+                  (r.fora && r.fora.length ? " Na rastreadora mas fora do painel: "+r.fora.join(", ")+"." : ""));
+  }catch(e){
+    const m = String(e && e.message || e);
+    aviso("okApi", /Failed to fetch|NetworkError|CORS|Load failed/i.test(m)
+      ? "⚠ O navegador bloqueou a conexão (CORS). Veja a explicação no aviso amarelo acima."
+      : "❌ "+m);
+  }
+});
+$("apiAuto").addEventListener("change", ()=>{
+  const cfg = salvarApiDaTela();
+  if(cfg.auto){
+    if(!cfg.senha){ aviso("okApi","Para o automático funcionar sozinho é preciso marcar 'Salvar a senha neste computador'."); $("apiAuto").checked=false; salvarApiDaTela(); return; }
+    ligarAuto(cfg.intervalo);
+    aviso("okApi","Atualização automática ligada — a cada "+cfg.intervalo+" minuto(s), enquanto o painel estiver aberto.");
+    sincronizarApi().then(r=>{ mostrarBruto(); }).catch(()=>{});
+  } else {
+    pararAuto();
+    aviso("okApi","Atualização automática desligada.");
+  }
+});
+$("apiIntervalo").addEventListener("change", ()=>{
+  const cfg = salvarApiDaTela();
+  if(cfg.auto){ ligarAuto(cfg.intervalo); aviso("okApi","Intervalo alterado para "+cfg.intervalo+" minuto(s)."); }
+});
+$("apiSalvar").addEventListener("change", salvarApiDaTela);
+$("btnExportar").addEventListener("click", exportarBackup);
+$("btnImportar").addEventListener("click", ()=> $("arqImportar").click());
+$("arqImportar").addEventListener("change", (e)=>{
+  const f = e.target.files && e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ importarBackup(String(r.result||"")); e.target.value=""; };
+  r.readAsText(f);
+});
+$("btnLimpar").addEventListener("click", ()=>{
+  if(!confirm("Apagar TODAS as viagens do quadro e o histórico deste computador?\n\nOs usuários cadastrados são mantidos. Faça um backup antes se quiser guardar.")) return;
+  S.drivers = []; S.arquivo = []; save(); render();
+  aviso("okDados","Viagens e histórico apagados.");
+});
+function iniciarPainel(){
+  let opts = '<option value="todos">Todos os status</option>';
+  STAGES.forEach(s=>{ opts += '<option value="'+s.key+'">'+s.label+"</option>"; });
+  $("filtro").innerHTML = opts;
+  carregarPrefs();
+  $("tempLimite").value = S.tempLimite;
+  const ac = lerApiCfg();
+  if(ac.auto && ac.usuario && ac.senha){
+    ligarAuto(ac.intervalo || 2);
+    sincronizarApi().catch(()=>{});
+  }
+  load();
+  render();
+  checkAlerts();
+  if(syncLigado()) ligarSync();
+  ligarArtefato();
+  setInterval(()=>{
+    if(S.editTracking || S.editEntregas) return;
+    render();
+  }, 60000);
+  setInterval(()=>{
+    if(S.editTracking || S.editEntregas) return;
+    renderSub();
+  }, 15000);
+}
+if(estaLogado()) abrirPainel();
+else setTimeout(()=>$("usr").focus(), 80);
+</script>
+<script>
+(function(){
+  function init(){
+    var f=document.getElementById("loginForm"); if(!f) return;
+    var b=f.querySelector("button.entrar")||f.querySelector("button[type=submit]")||f.querySelector("button");
+    function go(){ f.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})); }
+    if(b){ b.setAttribute("type","button"); b.addEventListener("click",function(ev){ ev.preventDefault(); go(); }); }
+    f.addEventListener("keydown",function(ev){ if(ev.key==="Enter"){ ev.preventDefault(); go(); } });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",function(){setTimeout(init,0)});
+  else setTimeout(init,0);
+})();
+</script>
+<script>
+/* Cronometro do BSoft: sobrevive a recarregar/fechar a pagina (15/08/2026) */
+(function(){
+  var K="painel-viagens-prox-bsoft", pronto=false;
+  var t=setInterval(function(){
+    if(typeof S==="undefined"||!S) return;
+    try{
+      var v=localStorage.getItem(K), n=v?Number(v):0;
+      if(isFinite(n)&&n>Date.now()) S.proximaAtualizacaoBsoft=n;
+    }catch(e){}
+    pronto=true; clearInterval(t);
+    if(typeof render==="function"){ try{ render(); }catch(e){} }
+  },200);
+  setInterval(function(){
+    if(!pronto) return;
+    try{
+      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
+        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
+    }catch(e){}
+  },3000);
+  window.addEventListener("beforeunload",function(){
+    try{
+      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
+        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
+    }catch(e){}
+  });
+})();
+</script>
+<style id="tema-transload">
+/* 1) Logo TRANSLOAD como marca d'agua no cabecalho (nao mexe em nenhum botao) */
+header{
+  background-image:url(data:image/png;base64,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);
+  background-repeat:no-repeat;
+  background-position:right 22px top 10px;   /* canto superior direito, area livre */
+  background-size:auto 74px;
+}                                  /* fica no fundo: nao desloca nem altera nenhum botao */
+@media (max-width:620px){ header{ background-image:none; } }
+
+/* 2) Modo escuro */
+html[data-tema="escuro"]{
+  --bg:#12151A; --card:#1B1F27; --ink:#E9E7E2; --muted:#9A958B; --line:#2B303A;
+}
+html[data-tema="escuro"] body{ background:var(--bg); color:var(--ink); }
+html[data-tema="escuro"] .card{ color:var(--ink); }
+/* cada status mantem a sua cor, em versao escura */
+html[data-tema="escuro"] .card[data-st="carregando"]{ background:#2E2417 !important; --boxbg:#3E3120 !important; }
+html[data-tema="escuro"] .card[data-st="em_rota"]   { background:#16232F !important; --boxbg:#1E3242 !important; }
+html[data-tema="escuro"] .card[data-st="no_cliente"]{ background:#241F30 !important; --boxbg:#322B44 !important; }
+html[data-tema="escuro"] .card[data-st="finalizado"]{ background:#152A1D !important; --boxbg:#1D3B28 !important; }
+html[data-tema="escuro"] .card:not([data-st]){ background:#1B1F27 !important; --boxbg:#262C37 !important; }
+html[data-tema="escuro"] input:not(.field):not([type=checkbox]),
+html[data-tema="escuro"] select:not(.field),
+html[data-tema="escuro"] textarea{
+  background:#20252E; color:var(--ink); border-color:var(--line);
+}
+html[data-tema="escuro"] .sq, html[data-tema="escuro"] .mini{ color:var(--ink); }
+html[data-tema="escuro"] .colhead .count{ background:#20252E; }
+</style>
+<script>
+/* Botao de modo claro/escuro (15/08/2026) */
+(function(){
+  var K="painel-viagens-tema";
+  function aplicar(t){ document.documentElement.setAttribute("data-tema", t); }
+  var atual="claro";
+  try{ atual = localStorage.getItem(K) || "claro"; }catch(e){}
+  aplicar(atual);
+  function rotular(b){
+    var esc = document.documentElement.getAttribute("data-tema")==="escuro";
+    b.textContent = esc ? "\u2600 Modo claro" : "\u1F319 Modo escuro";
+    b.textContent = esc ? "\u2600 Modo claro" : "\uD83C\uDF19 Modo escuro";
+  }
+  function montar(){
+    var tools=document.querySelector(".tools");
+    if(!tools) return false;
+    if(document.getElementById("btnTema")) return true;
+    var b=document.createElement("button");
+    b.id="btnTema"; b.type="button"; b.className="btn btn-ghost";
+    b.title="Alternar entre modo claro e escuro";
+    rotular(b);
+    b.addEventListener("click", function(){
+      var novo = document.documentElement.getAttribute("data-tema")==="escuro" ? "claro" : "escuro";
+      aplicar(novo);
+      try{ localStorage.setItem(K,novo); }catch(e){}
+      rotular(b);
+    });
+    var sair=document.getElementById("btnSair");
+    if(sair && sair.parentElement===tools) tools.insertBefore(b, sair); else tools.appendChild(b);
+    return true;
+  }
+  if(!montar()) { var t=setInterval(function(){ if(montar()) clearInterval(t); },200); }
+  setInterval(montar, 3000);   /* se algo redesenhar o cabecalho, o botao volta */
+})();
+</script>
+</body>
+<script>
+/* Extensao TRANSLOAD: usuarios acompanham o quadro compartilhado (pedido do dono, 14/08/2026) */
+try{
+  var __aplicandoUsuarios=false;
+  if(typeof estadoLocal==="function"){
+    var __e0=estadoLocal;
+    estadoLocal=function(){ var o=__e0(); try{ o.usuarios=lerUsuarios(); }catch(e){} return o; };
+  }
+  if(typeof mesclarQuadro==="function"){
+    var __m0=mesclarQuadro;
+    mesclarQuadro=function(local,remoto){
+      var o=__m0(local,remoto);
+      try{
+        var m={};
+        ((remoto&&remoto.usuarios)||[]).forEach(function(x){ if(x&&x.u) m[x.u]=x; });
+        ((local&&local.usuarios)||[]).forEach(function(x){ if(x&&x.u) m[x.u]=x; });
+        o.usuarios=Object.keys(m).map(function(k){return m[k]});
+      }catch(e){}
+      return o;
+    };
+  }
+  if(typeof sbLer==="function"){
+    var __s0=sbLer;
+    sbLer=async function(c){
+      var linha=await __s0(c);
+      try{
+        var vind=linha&&linha.dados&&linha.dados.usuarios;
+        if(vind&&vind.length&&typeof lerUsuarios==="function"){
+          var atuais=lerUsuarios(), m={}, mudou=false;
+          atuais.forEach(function(x){ if(x&&x.u) m[x.u]=x; });
+          vind.forEach(function(x){ if(x&&x.u&&!m[x.u]){ m[x.u]=x; mudou=true; } });
+          if(mudou){
+            __aplicandoUsuarios=true;
+            try{ gravarUsuarios(Object.keys(m).map(function(k){return m[k]})); }finally{ __aplicandoUsuarios=false; }
+            try{ if(typeof desenharUsuarios==="function") desenharUsuarios(); }catch(e){}
+          }
+        }
+      }catch(e){}
+      return linha;
+    };
+  }
+  if(typeof gravarUsuarios==="function"){
+    var __g0=gravarUsuarios;
+    gravarUsuarios=function(l){
+      __g0(l);
+      try{ if(!__aplicandoUsuarios && typeof marcarAlteracao==="function") marcarAlteracao(); }catch(e){}
+    };
+  }
+}catch(e){}
+</script>
+<script>
+/* Extensao TRANSLOAD 2: encerra automaticamente cards em "Finalizado" apos 5 minutos (pedido do dono, 14/08/2026) */
+try{
+  var __FIN_KEY="painel-viagens-fin-desde";
+  function __lerFin(){ try{ return JSON.parse(localStorage.getItem(__FIN_KEY)||"{}"); }catch(e){ return {}; } }
+  function __gravarFin(o){ try{ localStorage.setItem(__FIN_KEY, JSON.stringify(o)); }catch(e){} }
+  function __tickEncerrar(){
+    try{
+      if(typeof S==="undefined" || !Array.isArray(S.drivers)) return;
+      var agora=Date.now(), marca=__lerFin(), mudouMapa=false, encerrar=[];
+      S.drivers.forEach(function(d){
+        if(d && d.status==="finalizado"){
+          if(!marca[d.id]){ marca[d.id]=agora; mudouMapa=true; }
+          else if(agora - marca[d.id] >= 5*60*1000){ encerrar.push(d); }
+        } else if(d && marca[d.id]){ delete marca[d.id]; mudouMapa=true; }
+      });
+      Object.keys(marca).forEach(function(id){
+        if(!S.drivers.some(function(d){return d && d.id===id})){ delete marca[id]; mudouMapa=true; }
+      });
+      if(encerrar.length){
+        encerrar.forEach(function(d){
+          S.arquivo.unshift(Object.assign({}, d, {finalStatus:"finalizado", motivo:"Finalizada", archivedAt:Date.now()}));
+          delete marca[d.id];
+        });
+        var ids=encerrar.map(function(d){return d.id});
+        S.drivers=S.drivers.filter(function(d){ return ids.indexOf(d.id)<0; });
+        mudouMapa=true;
+        save(); render();
+      }
+      if(mudouMapa) __gravarFin(marca);
+    }catch(e){}
+  }
+  setInterval(__tickEncerrar, 30000);
+  setTimeout(__tickEncerrar, 8000);
+}catch(e){}
+
+</script>
+<script>
+/* Extensao TRANSLOAD 3: cronometro de tempo em cada cliente (pedido do dono, 14/08/2026) */
+try{
+  function __tKey(e){ return slug((e.cliente||"")+" "+(e.destino||"")); }
+  function __tFmt(ms){
+    var m=Math.floor(ms/60000);
+    if(m<1) return "agora";
+    if(m<60) return m+" min";
+    return Math.floor(m/60)+"h"+String(m%60).padStart(2,"0");
+  }
+  function __tickTempos(){
+    try{
+      if(typeof S==="undefined" || !Array.isArray(S.drivers)) return;
+      var agora=Date.now(), mudouGeral=false;
+      S.drivers.forEach(function(d){
+        if(!d) return;
+        var i=-1;
+        try{ i=entregaNaReferencia(d); }catch(e){}
+        var atKey = (i>=0 && d.entregas && d.entregas[i]) ? __tKey(d.entregas[i]) : null;
+        var t = d.tempos = d.tempos||{};
+        var mudou=false;
+        Object.keys(t).forEach(function(k){
+          if(k!==atKey && t[k] && t[k].desde){
+            t[k].total=(t[k].total||0)+(agora-t[k].desde);
+            t[k].desde=null; mudou=true;
+          }
+        });
+        if(atKey){
+          if(!t[atKey]){ t[atKey]={total:0,desde:agora}; mudou=true; }
+          else if(!t[atKey].desde){ t[atKey].desde=agora; mudou=true; }
+        }
+        if(mudou){ mudouGeral=true; try{ touch(d); }catch(e){} }
+      });
+      if(mudouGeral){ save(); render(); }
+    }catch(e){}
+  }
+  function __pintarTempos(){
+    try{
+      if(typeof S==="undefined") return;
+      var agora=Date.now();
+      document.querySelectorAll(".erow input[data-act=tog]").forEach(function(cb){
+        var id=cb.getAttribute("data-id"), i=Number(cb.getAttribute("data-i"));
+        var d=S.drivers.find(function(x){return x&&x.id===id});
+        if(!d || !d.entregas || !d.entregas[i]) return;
+        var t=d.tempos && d.tempos[__tKey(d.entregas[i])];
+        var meta=cb.parentElement && cb.parentElement.querySelector(".emeta");
+        if(!meta) return;
+        var chip=meta.querySelector(".tempo-chip");
+        if(!t || (!(t.total>0) && !t.desde)){ if(chip) chip.remove(); return; }
+        var vivo=!!t.desde;
+        var ms=(t.total||0)+(vivo? agora-t.desde : 0);
+        var txt=vivo? ("⏱ "+__tFmt(ms)+" no cliente") : ("⏱ ficou "+__tFmt(ms));
+        if(!chip){ chip=document.createElement("span"); chip.className="tempo-chip"; meta.appendChild(chip); }
+        chip.textContent=txt;
+        chip.className="tempo-chip"+(vivo?" vivo":"");
+      });
+    }catch(e){}
+  }
+  var __st=document.createElement("style");
+  __st.textContent=".tempo-chip{background:#EAF6EE;color:#3C9B5F;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}.tempo-chip.vivo{background:#F1EEF7;color:#7C6FA8;animation:pulsa 2.4s infinite}";
+  document.head.appendChild(__st);
+  if(typeof render==="function"){
+    var __r0=render;
+    render=function(){ __r0(); try{ __pintarTempos(); }catch(e){} };
+  }
+  setInterval(__tickTempos, 30000);
+  setInterval(__pintarTempos, 10000);
+  setTimeout(function(){ __tickTempos(); __pintarTempos(); }, 9000);
+}catch(e){}
+
+</script>
+<script>
+/* Extensao TRANSLOAD 4: blindagem do campo de busca contra autofill do Chrome (14/08/2026) */
+try{
+  function __blindarBusca(){
+    var q=document.getElementById("q");
+    if(!q || q.__blindado) return;
+    q.__blindado=true;
+    /* 1) campo travado ate o usuario clicar - Chrome nao preenche campo readonly */
+    q.setAttribute("readonly","");
+    function destravar(){ q.removeAttribute("readonly"); }
+    q.addEventListener("focus", destravar);
+    q.addEventListener("mousedown", destravar);
+    q.addEventListener("touchstart", destravar);
+    /* 2) marca digitacao real do usuario */
+    q.addEventListener("input", function(e){ if(e.isTrusted && document.activeElement===q) q.__doUsuario=true; });
+    /* 3) vigia: texto que surgir sem digitacao real e apagado na hora */
+    setInterval(function(){
+      try{
+        if(q.value && !q.__doUsuario && document.activeElement!==q){
+          q.value="";
+          q.dispatchEvent(new Event("input",{bubbles:true}));
+        }
+        if(!q.value) q.__doUsuario=false;
+      }catch(e){}
+    }, 800);
+  }
+  __blindarBusca();
+  document.addEventListener("DOMContentLoaded", __blindarBusca);
+  setTimeout(__blindarBusca, 3000);
+}catch(e){}
+
+</script>
+<script>
+/* Extensao TRANSLOAD 5: historico de temperatura + relatorios/indicadores + avisos no navegador (14/08/2026) */
+try{
+var _dirtyTH=false;
+
+function _fmtDur(ms){
+var m=Math.floor(ms/60000);
+if(m<1) return "0 min";
+if(m<60) return m+" min";
+return Math.floor(m/60)+"h"+String(m%60).padStart(2,"0");
+}
+function _tkey(e){ return slug((e.cliente||"")+" "+(e.destino||"")); }
+
+/* ---- 1) amostragem de temperatura (linha do tempo por veiculo) ---- */
+function _amostrarTemp(){
+if(typeof S==="undefined" || !Array.isArray(S.drivers)) return;
+var agora=Date.now();
+S.drivers.forEach(function(d){
+var t=d && d.tracking;
+if(!t || !t.temps || !t.temps.length) return;
+d.tempHist=d.tempHist||[];
+var last=d.tempHist[d.tempHist.length-1];
+var mudou = !last || (agora-last.t>=110000) || (JSON.stringify(last.v)!==JSON.stringify(t.temps));
+if(mudou){
+d.tempHist.push({t:agora, v:t.temps.slice()});
+if(d.tempHist.length>150) d.tempHist=d.tempHist.slice(-150);
+if(typeof touch==="function") touch(d);
+_dirtyTH=true;
+}
+});
+if(_dirtyTH){ _dirtyTH=false; if(typeof save==="function") save(); }
+}
+
+/* ---- 2) avisos no navegador ---- */
+var _notif={};
+function _checarAvisos(){
+if(typeof S==="undefined") return;
+if(!(typeof Notification!=="undefined") || Notification.permission!=="granted") return;
+(S.drivers||[]).forEach(function(d){
+if(!d) return;
+var quente = emAlerta(d, S.tempLimite);
+if(quente && !_notif[d.id]){
+_notif[d.id]=true;
+try{ new Notification("🌡 Temperatura alta", { body:(d.motorista||"")+" ("+(d.placa||"")+") acima de "+S.tempLimite+"°C", tag:"temp-"+d.id }); }catch(e){}
+} else if(!quente){ _notif[d.id]=false; }
+});
+}
+
+/* ---- 3) agregacao para relatorios (funcao pura, testavel) ---- */
+function _agregar(drivers, arquivo, agora){
+var todos=(drivers||[]).concat(arquivo||[]);
+var nomes={}; /* slug -> "Cliente — destino" legivel */
+todos.forEach(function(d){
+(d.entregas||[]).forEach(function(e){
+nomes[_tkey(e)] = (e.cliente||"") + (e.destino? " — "+e.destino : "");
+});
+});
+var porCliente={};
+todos.forEach(function(d){
+var t=d.tempos||{};
+Object.keys(t).forEach(function(k){
+var reg=t[k]||{};
+var ms=(reg.total||0)+(reg.desde? (agora-reg.desde):0);
+if(ms<=0) return;
+if(!porCliente[k]) porCliente[k]={ms:0, nome: nomes[k]||k, visitas:0};
+porCliente[k].ms+=ms; porCliente[k].visitas++;
+});
+});
+var clientes=Object.keys(porCliente).map(function(k){return porCliente[k];}).sort(function(a,b){return b.ms-a.ms;});
+var porMot={};
+todos.forEach(function(d){
+if(!d || !d.motorista) return;
+var l=d.entregas||[];
+if(!porMot[d.motorista]) porMot[d.motorista]={motorista:d.motorista, total:0, feitas:0};
+porMot[d.motorista].total+=l.length;
+porMot[d.motorista].feitas+=l.filter(function(e){return e.concluida;}).length;
+});
+var motoristas=Object.keys(porMot).map(function(k){return porMot[k];}).sort(function(a,b){return b.feitas-a.feitas;});
+return {clientes:clientes, motoristas:motoristas};
+}
+
+/* ---- 4) resumo de temperatura de um veiculo (funcao pura) ---- */
+function _resumoTemp(hist){
+var vals=[];
+(hist||[]).forEach(function(s){ (s.v||[]).forEach(function(x){ if(typeof x==="number") vals.push(x); }); });
+if(!vals.length) return null;
+var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
+var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
+return {min:min, max:max, avg:Math.round(avg*10)/10, amostras:(hist||[]).length};
+}
+
+/* ---- 5) CSV (funcao pura) ---- */
+function _csv(drivers, arquivo, agora){
+var todos=(drivers||[]).concat(arquivo||[]);
+var linhas=[["Motorista","Placa","Cliente","Destino","Tempo no cliente (min)","Entrega concluida"]];
+todos.forEach(function(d){
+(d.entregas||[]).forEach(function(e){
+var reg=(d.tempos||{})[_tkey(e)];
+var min = reg ? Math.round(((reg.total||0)+(reg.desde?(agora-reg.desde):0))/60000) : "";
+linhas.push([d.motorista||"", d.placa||"", e.cliente||"", e.destino||"", min, e.concluida?"sim":"nao"]);
+});
+});
+return linhas.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(","); }).join("\n");
+}
+
+/* exporta para teste em node */
+if(typeof module!=="undefined" && module.exports){
+module.exports={_agregar:_agregar, _resumoTemp:_resumoTemp, _csv:_csv, _amostrarTemp:_amostrarTemp};
+}
+
+/* ---- 6) UI (so no navegador) ---- */
+if(typeof document!=="undefined"){
+function _sparkline(hist){
+var pts=[];
+(hist||[]).forEach(function(s){
+var arr=(s.v||[]).filter(function(x){return typeof x==="number";});
+if(arr.length) pts.push(Math.max.apply(null,arr)); /* pega o sensor mais quente da amostra */
+});
+if(pts.length<2) return '<div style="color:var(--muted);font-size:12px">sem dados suficientes</div>';
+var min=Math.min.apply(null,pts), max=Math.max.apply(null,pts), W=520, H=90, pad=6;
+var rng=(max-min)||1;
+var d=pts.map(function(y,i){ var x=pad+i*(W-2*pad)/(pts.length-1); var yy=pad+(1-(y-min)/rng)*(H-2*pad); return (i?"L":"M")+x.toFixed(1)+" "+yy.toFixed(1); }).join(" ");
+var lim=(typeof S!=="undefined")?S.tempLimite:null;
+var yLim = lim!=null ? pad+(1-(lim-min)/rng)*(H-2*pad) : null;
+return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:90px;background:var(--bg);border:1px solid var(--line);border-radius:8px">'
++ (yLim!=null && lim>=min && lim<=max ? '<line x1="0" y1="'+yLim.toFixed(1)+'" x2="'+W+'" y2="'+yLim.toFixed(1)+'" stroke="#C64545" stroke-dasharray="4 4" stroke-width="1"/>' : '')
++ '<path d="'+d+'" fill="none" stroke="#2E6F9E" stroke-width="2"/></svg>';
+}
+function _abrirRelatorios(){
+if(typeof Notification!=="undefined" && Notification.permission==="default"){ try{ Notification.requestPermission(); }catch(e){} }
+var ag=_agregar(S.drivers, S.arquivo, Date.now());
+var emrota=(S.drivers||[]).filter(function(d){return d.status==="em_rota";}).length;
+var nocliente=(S.drivers||[]).filter(function(d){return d.status==="no_cliente";}).length;
+var quentes=(S.drivers||[]).filter(function(d){return emAlerta(d,S.tempLimite);}).length;
+var totEnt=(S.drivers||[]).reduce(function(a,d){return a+((d.entregas||[]).length);},0);
+var feitas=(S.drivers||[]).reduce(function(a,d){return a+((d.entregas||[]).filter(function(e){return e.concluida;}).length);},0);
+var comHist=(S.drivers||[]).filter(function(d){return d.tempHist&&d.tempHist.length;});
+var h='';
+h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">';
+[["Em rota",emrota],["No cliente",nocliente],["Em alerta °C",quentes],["Entregas",feitas+"/"+totEnt]].forEach(function(k){
+h+='<div style="background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 14px;min-width:110px"><div style="font-size:22px;font-weight:700" class="display">'+k[1]+'</div><div style="font-size:12px;color:var(--muted)">'+k[0]+'</div></div>';
+});
+h+='</div>';
+h+='<h4 style="margin:14px 0 6px">⏱ Tempo em cada cliente (maior primeiro)</h4>';
+if(!ag.clientes.length){ h+='<p style="color:var(--muted);font-size:13px">Ainda sem tempos registrados — aparece conforme os motoristas encostam nos clientes.</p>'; }
+else { h+='<div style="border:1px solid var(--line);border-radius:9px;overflow:hidden">'; ag.clientes.slice(0,20).forEach(function(c,i){ h+='<div style="display:flex;justify-content:space-between;padding:8px 12px;'+(i%2?'background:var(--bg)':'')+'"><span style="font-size:13px">'+esc(c.nome)+'</span><span style="font-weight:700;color:var(--route)">'+_fmtDur(c.ms)+(c.visitas>1?' <span style="color:var(--muted);font-weight:400">('+c.visitas+' visitas)</span>':'')+'</span></div>'; }); h+='</div>'; }
+h+='<h4 style="margin:18px 0 6px">📦 Entregas por motorista</h4>';
+h+='<div style="border:1px solid var(--line);border-radius:9px;overflow:hidden">';
+ag.motoristas.forEach(function(m,i){ h+='<div style="display:flex;justify-content:space-between;padding:8px 12px;'+(i%2?'background:var(--bg)':'')+'"><span style="font-size:13px">'+esc(m.motorista)+'</span><span style="font-weight:700">'+m.feitas+'/'+m.total+'</span></div>'; });
+h+='</div>';
+h+='<h4 style="margin:18px 0 6px">🌡 Temperatura por veículo</h4>';
+if(!comHist.length){ h+='<p style="color:var(--muted);font-size:13px">O histórico começa a ser gravado assim que o rastreio traz temperatura.</p>'; }
+else{
+h+='<select id="__relVeic" class="field" style="margin-bottom:8px">'+comHist.map(function(d,i){return '<option value="'+i+'">'+esc(d.motorista||d.placa)+' — '+esc(d.placa||"")+'</option>';}).join("")+'</select>';
+h+='<div id="__relTempBox"></div>';
+}
+var wrap=document.getElementById("__relModal");
+if(!wrap){ wrap=document.createElement("div"); wrap.id="__relModal"; document.body.appendChild(wrap); }
+wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px";
+wrap.innerHTML='<div style="background:var(--bg);max-width:720px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
++'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h3 class="display" style="margin:0">📊 RELATÓRIOS</h3><div><button id="__relCsv" class="btn btn-teal" style="margin-right:8px">⬇ Exportar (Excel)</button><button id="__relFechar" class="btn btn-ghost" style="background:var(--asphalt);color:#fff">Fechar</button></div></div>'
++h+'</div>';
+function pintaTemp(){
+var sel=document.getElementById("__relVeic"); if(!sel) return;
+var d=comHist[Number(sel.value)]; var r=_resumoTemp(d.tempHist);
+var box=document.getElementById("__relTempBox");
+box.innerHTML=_sparkline(d.tempHist)+(r?('<div style="display:flex;gap:14px;font-size:13px;margin-top:6px"><span>mín <b>'+r.min+'°C</b></span><span>máx <b style="color:'+(r.max>=S.tempLimite?'#C64545':'inherit')+'">'+r.max+'°C</b></span><span>média <b>'+r.avg+'°C</b></span><span style="color:var(--muted)">'+r.amostras+' leituras</span></div>'):'');
+}
+if(comHist.length){ pintaTemp(); document.getElementById("__relVeic").addEventListener("change",pintaTemp); }
+document.getElementById("__relFechar").addEventListener("click",function(){ wrap.style.display="none"; });
+wrap.addEventListener("click",function(e){ if(e.target===wrap) wrap.style.display="none"; });
+document.getElementById("__relCsv").addEventListener("click",function(){
+var csv=" "+_csv(S.drivers,S.arquivo,Date.now());
+var a=document.createElement("a"); a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv); a.download="relatorio-transload.csv"; document.body.appendChild(a); a.click(); a.remove();
+});
+}
+function _injetarBotao(){
+if(document.getElementById("__btnRel")) return;
+var alvo=document.getElementById("btnHist");
+if(!alvo) return;
+var b=document.createElement("button");
+b.id="__btnRel"; b.className=alvo.className; b.innerHTML="📊 Relatórios";
+b.addEventListener("click",_abrirRelatorios);
+alvo.parentNode.insertBefore(b, alvo.nextSibling);
+}
+if(typeof render==="function"){ var _r0=render; render=function(){ _r0(); try{ _injetarBotao(); }catch(e){} }; }
+setTimeout(_injetarBotao, 1500);
+setInterval(_amostrarTemp, 60000);
+setInterval(_checarAvisos, 60000);
+setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
+}
+}catch(e){}
+
+</script>
+<script>
+/* ===== PATCH_PROXIMIDADE v1 — raio de 200 m + anti-oscilacao ===== */
+(function(){
+  if (window.__PATCH_PROXIMIDADE) return;
+  if (typeof statusAutomatico !== "function") return;
+  window.RAIO_CLIENTE_M = 200;
+  window.RAIO_SAIDA_M   = 400;
+  window.VEL_PARADO_KMH = 5;
+  window.CICLOS_P_SAIR  = 2;
+  window.distanciaRefMetros = function(ref){
+    if(!ref) return null;
+    var s = String(ref).trim();
+    var m = s.match(/([\d.,]+)\s*(km|m)\b/i);
+    if(!m) return /^em\s/i.test(s) ? 0 : null;
+    var n = parseFloat(m[1].replace(/\./g,"").replace(",","."));
+    if(isNaN(n)) return null;
+    return /km/i.test(m[2]) ? n*1000 : n;
+  };
+  var orig = statusAutomatico;
+  window.__statusAutomaticoOrig = orig;
+  window.statusAutomatico = function(d){
+    var st = orig(d);
+    var tr = (d && d.tracking) || null;
+    if(!tr) return st;
+    var vel  = Number(tr.velocidade || 0);
+    var dist = window.distanciaRefMetros(tr.referencia || tr.posicao);
+    var ant  = d.status;
+    if(st === "no_cliente" && ant !== "no_cliente" && dist !== null && dist > RAIO_CLIENTE_M) return "em_rota";
+    if(ant === "no_cliente" && dist !== null && dist > RAIO_SAIDA_M && vel > VEL_PARADO_KMH){
+      d._saiuCli = 0; return st === "no_cliente" ? "em_rota" : st;
+    }
+    if(ant === "no_cliente" && st !== "no_cliente" && st !== "finalizado"){
+      var perto = (dist === null) || (dist <= RAIO_SAIDA_M);
+      if(perto && vel <= VEL_PARADO_KMH){ d._saiuCli = 0; return "no_cliente"; }
+      d._saiuCli = (d._saiuCli||0) + 1;
+      if(d._saiuCli < CICLOS_P_SAIR) return "no_cliente";
+      d._saiuCli = 0;
+      return st;
+    }
+    if(st === "no_cliente") d._saiuCli = 0;
+    return st;
+  };
+  window.__PATCH_PROXIMIDADE = "v1";
+})();
+</script>
+<script>
+/* ===== PATCH_CRONOMETRO v1 — cronometro que nao some =====
+   O contador dependia de um agente externo gravar S.proximaAtualizacaoBsoft.
+   Sem isso ele expirava e o texto sumia. Agora ele se renova sozinho.        */
+(function(){
+  if (window.__PATCH_CRONO) return;
+  if (typeof textoProximaAtualizacaoBsoft !== "function") return;
+  window.INTERVALO_BSOFT_MIN = 60;
+  var orig = textoProximaAtualizacaoBsoft;
+  window.__textoProxOrig = orig;
+  window.textoProximaAtualizacaoBsoft = function(){
+    var agora = Date.now();
+    var p = S.proximaAtualizacaoBsoft;
+    if(!p || p <= agora){
+      var passo = (window.INTERVALO_BSOFT_MIN||60)*60000;
+      var base = p || agora;
+      while(base <= agora) base += passo;
+      S.proximaAtualizacaoBsoft = base;
+    }
+    return orig();
+  };
+  if(!S.proximaAtualizacaoBsoft || S.proximaAtualizacaoBsoft <= Date.now()){
+    S.proximaAtualizacaoBsoft = Date.now() + (window.INTERVALO_BSOFT_MIN||60)*60000;
+  }
+  window.__PATCH_CRONO = "v1";
+})();
+</script>
+<script>
+/* ===== PATCH_ENTREGAS v1 — baixa automatica de entregas =====
+   Regra: caminhao entra no raio do cliente, fica parado >= 60 min em dia util
+   entre 7h e 19h, e depois sai -> aquela entrega recebe o visto verde.
+   Quando todas as entregas do veiculo estao concluidas, o status vira
+   finalizado e, se o MDF-e ainda estiver aberto no BSoft, o veiculo fica
+   marcado com mdfePendente = true (falta dar baixa no BSoft).              */
+(function(){
+  if (window.__PATCH_ENTREGAS) return;
+  if (typeof aplicarStatusAuto !== "function") return;
+  window.ENTREGA_MIN_MINUTOS = 60;
+  window.ENTREGA_HORA_INI = 7;
+  window.ENTREGA_HORA_FIM = 19;
+  window.PALAVRAS_GENERICAS = ["ALIMENTOS","ATACADISTA","ATACADO","DISTRIBUIDORA","DISTRIBUICAO","COMERCIAL","COMERCIO","SUPERMERCADO","SUPERMERCADOS","MERCADO","INDUSTRIA","INDUSTRIAL","TRANSPORTES","TRANSPORTE","LOGISTICA","SERVICOS","SERVICO","LTDA","EIRELI","FILIAL","CENTRO","ARMAZEM","DEPOSITO","PRODUTOS","BRASIL","NACIONAL","REDE","GRUPO","POSTO","AUTO","FRIGORIFICO","COOPERATIVA","COOP","ASSOCIADOS","EMPRESA","MATRIZ","LOJA","UNIDADE","SUPER","MAIS"];
+  window.ALIAS_CLIENTES = { "GTF":["GONCALVES","TORTOLA"] };
+  function norm(s){
+    return (s||"").toString().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim();
+  }
+  function distintivos(s){
+    return norm(s).split(" ").filter(function(t){
+      return t.length>=4 && window.PALAVRAS_GENERICAS.indexOf(t)<0;
+    });
+  }
+  window.casarEntrega = function(ref, entregas){
+    var r = norm(ref);
+    if(!r) return -1;
+    Object.keys(window.ALIAS_CLIENTES).forEach(function(ap){
+      if(new RegExp("\\b"+ap+"\\b").test(r)) r += " " + window.ALIAS_CLIENTES[ap].join(" ");
+    });
+    var melhor=-1, score=0;
+    (entregas||[]).forEach(function(e,i){
+      if(e.concluida) return;
+      var tc = distintivos(e.cliente);
+      if(!tc.length) return;
+      var acertos = tc.filter(function(t){ return r.indexOf(t)>=0; }).length;
+      if(acertos > score){ score=acertos; melhor=i; }
+    });
+    return score>0 ? melhor : -1;
+  };
+  window.emHorarioUtil = function(ts){
+    var d = new Date(ts); var dia = d.getDay();
+    if(dia===0 || dia===6) return false;
+    var h = d.getHours();
+    return h >= window.ENTREGA_HORA_INI && h < window.ENTREGA_HORA_FIM;
+  };
+  window.processarEntregas = function(){
+    var agora = Date.now(); var eventos = [];
+    (S.drivers||[]).forEach(function(d){
+      var t = d.tracking || {};
+      if(!t.trackedAt) return;
+      var ref  = t.referencia || t.posicao || "";
+      var dist = window.distanciaRefMetros ? window.distanciaRefMetros(ref) : null;
+      var vel  = Number(t.velocidade || 0);
+      var dentro = (dist !== null && dist <= (window.RAIO_CLIENTE_M||200)) && vel <= (window.VEL_PARADO_KMH||5);
+      var idx = window.casarEntrega(ref, d.entregas);
+      if(dentro && idx >= 0){
+        var e = d.entregas[idx];
+        if(!e._chegouEm){ e._chegouEm = Number(t.trackedAt); eventos.push(d.placa+" chegou em "+e.cliente); }
+      } else {
+        (d.entregas||[]).forEach(function(e){
+          if(e.concluida || !e._chegouEm) return;
+          var parado = (agora - e._chegouEm)/60000;
+          if(parado >= window.ENTREGA_MIN_MINUTOS && window.emHorarioUtil(e._chegouEm)){
+            e.concluida = true; e._auto = true; e._concluidaEm = agora;
+            eventos.push(d.placa+" entrega concluida: "+e.cliente);
+          } else { e._chegouEm = null; }
+        });
+      }
+      var ents = d.entregas || [];
+      d._entregasOk = !!(ents.length && ents.every(function(e){ return e.concluida; }));
+    });
+    return eventos;
+  };
+  var origAplicar = aplicarStatusAuto;
+  window.__aplicarOrig = origAplicar;
+  window.aplicarStatusAuto = function(){
+    window.__ultimosEventos = window.processarEntregas();
+    origAplicar();
+    (S.drivers||[]).forEach(function(d){
+      if(d._entregasOk){ d.status = "finalizado"; d.mdfePendente = !!d.bsoftAberto; }
+      else { d.mdfePendente = false; }
+    });
+  };
+  window.__PATCH_ENTREGAS = "v1";
+})();
+</script>
+<script>
+/* PATCH_CRONOPOS v1 — tira o cronômetro da barra de status e coloca logo abaixo do botão "Importar entregas". Para desfazer, basta apagar este bloco. */
+(function(){
+  if (window.__PATCH_CRONOPOS) return;
+  window.__PATCH_CRONOPOS = "v1";
+  var RX = /pr[o\u00f3]xima atualiza[c\u00e7][a\u00e3]o/i;
+  function slot(){
+    var btn = document.getElementById("btnImpEnt");
+    if(!btn) return null;
+    var w = document.getElementById("cronoSlot");
+    if(w && w.parentNode) return w;
+    var col = document.createElement("div");
+    col.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:3px";
+    btn.parentNode.insertBefore(col, btn);
+    col.appendChild(btn);
+    w = document.createElement("div");
+    w.id = "cronoSlot";
+    w.style.cssText = "font-size:11px;line-height:1.2;text-align:center;opacity:.8;min-height:13px;white-space:nowrap";
+    col.appendChild(w);
+    return w;
+  }
+  function mover(){
+    var w = slot(); if(!w) return;
+    var sub = document.getElementById("sub"); if(!sub) return;
+    var achou = null;
+    Array.prototype.forEach.call(sub.querySelectorAll("span"), function(s){ if(RX.test(s.textContent||"")) achou = s; });
+    if(achou){ var txt = achou.textContent.trim(); achou.remove(); if(w.textContent !== txt) w.textContent = txt; }
+  }
+  function iniciar(){
+    var sub = document.getElementById("sub");
+    if(!sub){ return setTimeout(iniciar, 500); }
+    mover();
+    new MutationObserver(mover).observe(sub, {childList:true, subtree:true, characterData:true});
+    setInterval(mover, 5000);
+  }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+})();
+</script>
+<script>
+/* PATCH_FOTOS v3 — foto do motorista no card + botao 📷 Foto para cadastrar/trocar.
+   IMPORTANTE: as fotos NAO ficam neste arquivo. O repositorio e publico; as imagens ficam
+   em S.fotos, dentro do quadro compartilhado. Para desfazer tudo, apague este bloco. */
+(function(){
+  if (window.__PATCH_FOTOS) return;
+  window.__PATCH_FOTOS = "v3";
+  var TAM = 38, LADO = 128, QUAL = 0.72;
+  function norm(s){ return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim(); }
+  window.normNome = norm;
+  window.fotoDe = function(nome){ var f = (typeof S !== "undefined" && S.fotos) || {}; return f[norm(nome)] || null; };
+  window.setFoto = function(nome, dataUrl){
+    if(typeof S === "undefined") return "sem estado";
+    if(!S.fotos) S.fotos = {};
+    if(dataUrl) S.fotos[norm(nome)] = dataUrl; else delete S.fotos[norm(nome)];
+    try{ save(); }catch(e){}
+    pintar();
+    return norm(nome) + (dataUrl ? " -> " + dataUrl.length + " bytes" : " -> removida");
+  };
+  function reduzir(file, cb){
+    var fr = new FileReader();
+    fr.onload = function(){
+      var im = new Image();
+      im.onload = function(){
+        var lado = Math.min(im.width, im.height);
+        var sx = (im.width - lado) / 2;
+        var sy = (im.height - lado) / 2 * 0.6;
+        var c = document.createElement("canvas"); c.width = LADO; c.height = LADO;
+        var g = c.getContext("2d"); g.imageSmoothingQuality = "high";
+        g.drawImage(im, sx, sy, lado, lado, 0, 0, LADO, LADO);
+        cb(c.toDataURL("image/jpeg", QUAL));
+      };
+      im.onerror = function(){ cb(null); };
+      im.src = fr.result;
+    };
+    fr.onerror = function(){ cb(null); };
+    fr.readAsDataURL(file);
+  }
+  window.escolherFoto = function(nome){
+    var inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*";
+    inp.style.cssText = "position:fixed;left:-9999px;top:0";
+    inp.onchange = function(){
+      var f = inp.files && inp.files[0];
+      if(!f){ inp.remove(); return; }
+      reduzir(f, function(url){
+        inp.remove();
+        if(!url){ alert("Nao consegui ler essa imagem."); return; }
+        window.setFoto(nome, url);
+      });
+    };
+    document.body.appendChild(inp);
+    inp.click();
+  };
+  function pintar(){
+    var cards = document.querySelectorAll(".card");
+    for(var i = 0; i < cards.length; i++){
+      var card = cards[i];
+      var topo = card.querySelector(".cardtop"); if(!topo) continue;
+      var p = topo.querySelector("p.drv"); if(!p) continue;
+      var nome = p.textContent.trim(); if(!nome) continue;
+      var url = window.fotoDe(nome);
+      var chave = nome + "|" + (url ? url.length : 0);
+      var ja = topo.querySelector(".fotoMot");
+      if(!ja || ja.getAttribute("data-k") !== chave){
+        if(ja) ja.remove();
+        var el;
+        if(url){
+          el = document.createElement("img");
+          el.src = url; el.alt = "";
+          el.title = nome + " \u2014 clique para remover a foto";
+          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;object-fit:cover;object-position:50% 22%;margin-right:9px;flex:0 0 auto;cursor:pointer;border:2px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08)";
+          el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); if(confirm("Remover a foto de " + n + "?")) window.setFoto(n, null); }; })(nome);
+        } else {
+          el = document.createElement("div");
+          el.textContent = "\uD83D\uDCF7";
+          el.title = "Adicionar foto de " + nome;
+          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;margin-right:9px;flex:0 0 auto;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;opacity:.5;border:2px dashed rgba(255,255,255,.3);background:rgba(255,255,255,.05)";
+          el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); window.escolherFoto(n); }; })(nome);
+        }
+        el.className = "fotoMot";
+        el.setAttribute("data-k", chave);
+        topo.insertBefore(el, topo.firstChild);
+      }
+      var linha = card.querySelector(".cardbtns");
+      if(linha && !linha.querySelector(".btnFoto")){
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "mini btnFoto";
+        b.textContent = "\uD83D\uDCF7 Foto";
+        b.onclick = (function(n){ return function(ev){ ev.preventDefault(); ev.stopPropagation(); window.escolherFoto(n); }; })(nome);
+        linha.appendChild(b);
+      }
+    }
+  }
+  window.pintarFotos = pintar;
+  function iniciar(){ pintar(); setInterval(pintar, 1500); }
+  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
+})();
+</script>
+<script>
+/* PATCH_FOTOS_SYNC v1 — faz as fotos do PATCH_FOTOS entrarem na sincronizacao do quadro
+   compartilhado (Supabase) e sobreviverem a um F5. Sem isto a foto ficava so na memoria da
+   aba e sumia ao recarregar. Precisa do PATCH_FOTOS ja instalado. Para desfazer, apague. */
+(function(){
+  if (window.__PATCH_FOTOS_SYNC) return;
+  window.__PATCH_FOTOS_SYNC = "v1";
+  var LS_KEY = "painel-viagens-fotos";
+  try {
+    var salvas = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    if (typeof S !== "undefined") S.fotos = Object.assign({}, salvas, S.fotos || {});
+  } catch(e){}
+  var origSetFoto = window.setFoto;
+  if (typeof origSetFoto === "function") {
+    window.setFoto = function(nome, dataUrl){
+      var r = origSetFoto(nome, dataUrl);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(S.fotos || {})); } catch(e){}
+      try { if (typeof enviarAoServidor === "function") enviarAoServidor(); } catch(e){}
+      return r;
+    };
+  }
+  if (typeof estadoLocal === "function") {
+    var origEstadoLocal = estadoLocal;
+    window.estadoLocal = function(){
+      var e = origEstadoLocal();
+      e.fotos = (typeof S !== "undefined" && S.fotos) || {};
+      return e;
+    };
+  }
+  function puxarFotos(){
+    try {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      var c = lerSync();
+      sbLer(c).then(function(linha){
+        if (linha && linha.dados && linha.dados.fotos) {
+          S.fotos = Object.assign({}, linha.dados.fotos, S.fotos || {});
+          try { localStorage.setItem(LS_KEY, JSON.stringify(S.fotos)); } catch(e){}
+          if (typeof pintarFotos === "function") pintarFotos();
+        }
+      }).catch(function(){});
+    } catch(e){}
+  }
+  if (typeof puxarDoServidor === "function") {
+    var origPuxar = puxarDoServidor;
+    window.puxarDoServidor = function(){
+      var p = origPuxar();
+      if (p && typeof p.then === "function") p.then(puxarFotos).catch(function(){});
+      else puxarFotos();
+      return p;
+    };
+  }
+  setTimeout(puxarFotos, 1500);
+})();
+</script>
+<script>
+/* PATCH_RELPLACA v1 — mostra placa e motorista embaixo de cada cliente em "Tempo em cada
+   cliente" no relatorio. Nao mexe na agregacao original, so injeta uma linha extra depois que
+   o relatorio renderiza. Para desfazer, apague este bloco. */
+(function(){
+  if (window.__PATCH_RELPLACA) return;
+  window.__PATCH_RELPLACA = "v1";
+
+  function calcularQuem(){
+    var todos = (S.drivers||[]).concat(S.arquivo||[]);
+    var nomes = {};
+    todos.forEach(function(d){
+      (d.entregas||[]).forEach(function(e){
+        nomes[_tkey(e)] = (e.cliente||"") + (e.destino ? " — "+e.destino : "");
+      });
+    });
+    var quemPorKey = {};
+    todos.forEach(function(d){
+      var t = d.tempos||{};
+      Object.keys(t).forEach(function(k){
+        var reg = t[k]||{};
+        var ms = (reg.total||0) + (reg.desde ? (Date.now()-reg.desde) : 0);
+        if(ms<=0) return;
+        if(!quemPorKey[k]) quemPorKey[k] = {};
+        var placa = d.placa || "?";
+        if(!quemPorKey[k][placa]) quemPorKey[k][placa] = {placa: placa, motorista: d.motorista||"", ms:0};
+        quemPorKey[k][placa].ms += ms;
+      });
+    });
+    var porNome = {};
+    Object.keys(quemPorKey).forEach(function(k){
+      var nome = nomes[k] || k;
+      var lista = Object.keys(quemPorKey[k]).map(function(p){ return quemPorKey[k][p]; });
+      lista.sort(function(a,b){ return b.ms - a.ms; });
+      porNome[nome] = lista;
+    });
+    return porNome;
+  }
+  window.__quemPorCliente = calcularQuem;
+
+  function injetar(){
+    var wrap = document.getElementById("__relModal");
+    if(!wrap) return;
+    var h4s = wrap.querySelectorAll("h4");
+    var alvo = null;
+    for (var i=0;i<h4s.length;i++){ if(/Tempo em cada cliente/i.test(h4s[i].textContent)){ alvo = h4s[i]; break; } }
+    if(!alvo) return;
+    var box = alvo.nextElementSibling;
+    if(!box) return;
+    var linhas = box.querySelectorAll(":scope > div");
+    if(!linhas.length) return;
+    var porNome = calcularQuem();
+    linhas.forEach(function(linha){
+      if(linha.getAttribute("data-relplaca")) return;
+      var spanNome = linha.querySelector("span");
+      if(!spanNome) return;
+      var nome = spanNome.textContent;
+      var quem = porNome[nome];
+      linha.setAttribute("data-relplaca","1");
+      if(!quem || !quem.length) return;
+      var texto = quem.slice(0,3).map(function(q){ return (q.placa||"?") + " — " + (q.motorista||"?"); }).join(" · ");
+      if(quem.length > 3) texto += " +" + (quem.length-3);
+      spanNome.appendChild(document.createElement("br"));
+      var span2 = document.createElement("span");
+      span2.style.cssText = "font-size:11px;color:var(--muted);font-weight:400";
+      span2.textContent = texto;
+      spanNome.appendChild(span2);
+    });
+  }
+
+  var orig = window._abrirRelatorios;
+  if (typeof orig === "function"){
+    window._abrirRelatorios = function(){
+      var r = orig.apply(this, arguments);
+      setTimeout(injetar, 30);
+      return r;
+    };
+  }
+  setInterval(injetar, 1500);
+})();
+</script>
+<script>
+/* PATCH_ESPELHAMENTO v2 - sobe a placa pro quadro assim que ela aparece no rastreio Ca2Track e
+   ainda nao esta no quadro, em vez de esperar o ciclo do BSoft (ate 1h). Entra como "carregando";
+   o proximo ciclo do BSoft preenche mdfe/entregas normalmente.
+   v2 (18/08/2026): a v1 guardava "ultima vez que vi essa placa" so no localStorage do navegador
+   que estivesse aberto na hora - como o painel roda em varios computadores, uma placa podia
+   aparecer sem que o navegador certo estivesse com o ciclo rodando naquele momento, e nunca
+   subir (foi o que aconteceu com a MIZ-0858, ficou de fora). Agora:
+   - Placa que NUNCA existiu no quadro nem no historico (S.arquivo) sobe direto, sempre, de
+     qualquer computador - sem risco de virar fantasma, porque nunca teve viagem antes.
+   - Placa que ja tem viagem finalizada no historico so sobe de novo depois de um gap real de
+     sinal (fica sem transmitir e volta) - e o "ultima vez visto" agora fica em S.rastreioVisto,
+     que sincroniza pelo Supabase junto com os motoristas, entao funciona em qualquer computador
+     que tenha o painel aberto, nao so o que capturou o gap. */
+(function(){
+  if (window.__PATCH_ESPELHAMENTO === "v2") return;
+  window.__PATCH_ESPELHAMENTO = "v2";
+  var LS_KEY = "painel-viagens-rastreio-visto";
+  var GAP_MS = 2*60*60*1000;
+
+  if (typeof S !== "undefined" && !S.rastreioVisto) {
+    S.rastreioVisto = {};
+    try {
+      var salvo = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+      var mapa = (salvo && salvo.visto) ? salvo.visto : (salvo || {});
+      S.rastreioVisto = Object.assign({}, mapa, S.rastreioVisto);
+    } catch(e){}
+  }
+
+  function salvarLocal(){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S.rastreioVisto||{})); } catch(e){}
+  }
+
+  var cicloAtual = [];
+  var origMapear = window.mapearVeiculo;
+  if (typeof origMapear === "function"){
+    window.mapearVeiculo = function(o){
+      var r = origMapear(o);
+      if (r) cicloAtual.push(r);
+      return r;
+    };
+  }
+
+  function formatarPlaca(p){
+    return (p && p.length===7) ? (p.slice(0,3)+"-"+p.slice(3)) : p;
+  }
+
+  function processarEspelhamento(lista){
+    var agora = Date.now();
+    var novos = [];
+    (lista||[]).forEach(function(v){
+      var p = v && v.placa;
+      if(!p) return;
+      var noQuadro = S.drivers.some(function(d){ return normalizePlaca(d.placa)===p; });
+      if(noQuadro){ S.rastreioVisto[p] = agora; return; }
+      var noArquivo = (S.arquivo||[]).some(function(d){ return normalizePlaca(d.placa)===p; });
+      var visto = S.rastreioVisto[p];
+      if(!noArquivo){
+        novos.push(v);
+      } else if(visto && (agora - visto) >= GAP_MS){
+        novos.push(v);
+      }
+      S.rastreioVisto[p] = agora;
+    });
+    salvarLocal();
+    if(typeof marcarAlteracao === "function") marcarAlteracao();
+    if(!novos.length) return;
+    novos.forEach(function(v){
+      var p = v.placa;
+      var idxArq = S.arquivo.findIndex(function(d){ return normalizePlaca(d.placa)===p; });
+      var motoristaFmt = (v.motorista||"").toUpperCase();
+      if(idxArq >= 0){
+        var restaurado = S.arquivo.splice(idxArq,1)[0];
+        restaurado.status = "carregando";
+        restaurado.bsoftAberto = false;
+        restaurado.semNf = false;
+        restaurado.tracking = v.tracking || null;
+        restaurado.updatedAt = agora;
+        if(!restaurado.motorista && motoristaFmt) restaurado.motorista = motoristaFmt;
+        S.drivers.unshift(restaurado);
+      } else {
+        S.drivers.unshift({
+          id: "d-"+agora+"-"+Math.floor(Math.random()*1000),
+          motorista: motoristaFmt,
+          placa: formatarPlaca(p),
+          mdfe: "",
+          status: "carregando",
+          problema: false,
+          obs: "criado automatico pelo rastreio - aguardando BSoft",
+          updatedAt: agora,
+          tracking: v.tracking || null,
+          entregas: [],
+          semNf: false,
+          bsoftAberto: false
+        });
+      }
+    });
+    save();
+    if (typeof aplicarStatusAuto === "function") aplicarStatusAuto();
+    render();
+  }
+
+  var origSincronizar = window.sincronizarApi;
+  if (typeof origSincronizar === "function"){
+    window.sincronizarApi = async function(){
+      cicloAtual = [];
+      var r = await origSincronizar.apply(this, arguments);
+      try { processarEspelhamento(cicloAtual); } catch(e){ console.error("[PATCH_ESPELHAMENTO]", e); }
+      return r;
+    };
+  }
+
+  if (typeof estadoLocal === "function") {
+    var origEstadoLocal = estadoLocal;
+    window.estadoLocal = function(){
+      var e = origEstadoLocal();
+      e.rastreioVisto = S.rastreioVisto || {};
+      return e;
+    };
+  }
+
+  function mesclarVisto(remoto){
+    if(!remoto) return;
+    S.rastreioVisto = S.rastreioVisto || {};
+    Object.keys(remoto).forEach(function(p){
+      if(!S.rastreioVisto[p] || remoto[p] > S.rastreioVisto[p]) S.rastreioVisto[p] = remoto[p];
+    });
+    salvarLocal();
+  }
+
+  function puxarVisto(){
+    try {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      var c = lerSync();
+      sbLer(c).then(function(linha){
+        if (linha && linha.dados && linha.dados.rastreioVisto) mesclarVisto(linha.dados.rastreioVisto);
+      }).catch(function(){});
+    } catch(e){}
+  }
+  if (typeof puxarDoServidor === "function") {
+    var origPuxar = puxarDoServidor;
+    window.puxarDoServidor = function(){
+      var p = origPuxar();
+      if (p && typeof p.then === "function") p.then(puxarVisto).catch(function(){});
+      else puxarVisto();
+      return p;
+    };
+  }
+  setTimeout(puxarVisto, 1500);
+})();
+</script>
+<script>
+/* PATCH_ANEXOSENTREGA v1 - permite anexar foto (camera) ou arquivo (ex: PDF) em cada entrega,
+   pra guardar a nota fiscal/comprovante junto com a viagem. Pedido do dono, 18/08/2026: "os
+   dois" (foto e arquivo) e "as vezes tem 2 notas pro mesmo endereco" (varios anexos por entrega).
+   Guarda em d.anexosEntrega[chave] = [ {nome, tipo, dataUrl, criadoEm}, ... ], chave = slug do
+   cliente+destino (mesma chave que ja preserva o "concluida" ao reimportar entregas) - assim os
+   anexos sobrevivem a reimportacao/edicao de entregas sem precisar mexer no entSave/importEntregas.
+   Como e um campo dentro do proprio motorista (d), sincroniza sozinho pelo Supabase junto com o
+   resto do card (mesclarQuadro/estadoLocal ja copiam o objeto d inteiro) - nao precisou embrulhar
+   estadoLocal/puxarDoServidor feito com fotos/rastreioVisto.
+   Limite de tamanho: fotos sao recomprimidas (max 1280px, jpeg 72%) antes de guardar; arquivos
+   nao-imagem (pdf etc) sao aceitos ate ~3MB, maior que isso e recusado com aviso - o quadro
+   compartilhado e um unico bloco de dados, arquivo grande demais deixa a sincronizacao pesada.
+   Aviso pra manutencao futura: diferente da foto do motorista (uma por pessoa, tamanho fixo),
+   anexo de entrega cresce sem limite ao longo do tempo (cada viagem finalizada fica no
+   S.arquivo com seus anexos). Se o quadro comecar a ficar lento, migrar pra um bucket de
+   armazenamento separado (Supabase Storage) em vez de guardar tudo no blob principal.
+   Para desfazer, apague este bloco - os dados ficam orfaos em d.anexosEntrega, sem problema. */
+(function(){
+  if (window.__PATCH_ANEXOSENTREGA) return;
+  window.__PATCH_ANEXOSENTREGA = "v1";
+  var MAX_OUTRO_BYTES = 3.2*1024*1024;
+
+  function chaveEntrega(e){
+    return (typeof slug === "function") ? slug((e.cliente||"")+" "+(e.destino||"")) : ((e.cliente||"")+"|"+(e.destino||""));
+  }
+
+  function lerArquivo(file, cb){
+    if(!file) { cb(null); return; }
+    if(file.type && file.type.indexOf("image/")===0){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){
+          var maxDim = 1280;
+          var w = img.width, h = img.height;
+          var esc = Math.min(1, maxDim/Math.max(w,h));
+          var cw = Math.max(1, Math.round(w*esc)), ch = Math.max(1, Math.round(h*esc));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img,0,0,cw,ch);
+          var dataUrl;
+          try { dataUrl = canvas.toDataURL("image/jpeg", 0.72); } catch(e){ dataUrl = null; }
+          if(!dataUrl){ cb(null); return; }
+          cb({ nome: file.name||"foto.jpg", tipo:"image/jpeg", dataUrl: dataUrl, criadoEm: Date.now() });
+        };
+        img.onerror = function(){ cb(null); };
+        img.src = reader.result;
+      };
+      reader.onerror = function(){ cb(null); };
+      reader.readAsDataURL(file);
+    } else {
+      var reader2 = new FileReader();
+      reader2.onload = function(){
+        if(String(reader2.result||"").length > MAX_OUTRO_BYTES){
+          try { alert("Esse arquivo é muito grande (limite de ~3MB pra arquivos que não são foto). Tente uma versão menor."); } catch(e){}
+          cb(null); return;
+        }
+        cb({ nome: file.name||"arquivo", tipo: file.type||"application/octet-stream", dataUrl: reader2.result, criadoEm: Date.now() });
+      };
+      reader2.onerror = function(){ cb(null); };
+      reader2.readAsDataURL(file);
+    }
+  }
+
+  function forcarReinjetar(driverId){
+    document.querySelectorAll(".erow[data-anexoinj]").forEach(function(row){
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(chk && chk.getAttribute("data-id")===driverId) row.removeAttribute("data-anexoinj");
+    });
+    if (typeof injetarAnexos === "function") injetarAnexos();
+  }
+
+  function abrirAnexos(driverId, key){
+    var d = (typeof driver === "function") ? driver(driverId) : (S.drivers||[]).concat(S.arquivo||[]).find(function(x){return x.id===driverId;});
+    if(!d) return;
+    d.anexosEntrega = d.anexosEntrega || {};
+    var old = document.getElementById("__anexoModal");
+    if(old) old.remove();
+    var wrap = document.createElement("div");
+    wrap.id = "__anexoModal";
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+    var box = document.createElement("div");
+    box.style.cssText = "background:var(--card,#fff);color:var(--ink,#1B1E24);border-radius:10px;padding:16px;max-width:420px;width:100%;max-height:82vh;overflow:auto;font-family:inherit";
+
+    var inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*,application/pdf";
+    inp.setAttribute("capture", "environment");
+    inp.multiple = true;
+    inp.style.display = "none";
+
+    function desenhar(){
+      var lista = d.anexosEntrega[key] || [];
+      box.innerHTML = "";
+      var h4 = document.createElement("h4");
+      h4.textContent = "🧾 Notas / comprovantes";
+      h4.style.cssText = "margin:0 0 10px;font-size:16px";
+      box.appendChild(h4);
+      if(!lista.length){
+        var p = document.createElement("p");
+        p.style.cssText = "color:var(--muted,#666);font-size:13px;margin:0 0 10px";
+        p.textContent = "Nenhuma nota anexada ainda.";
+        box.appendChild(p);
+      }
+      lista.forEach(function(a, idx){
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line,#DCD7CB)";
+        var link = document.createElement("a");
+        link.href = a.dataUrl; link.target = "_blank"; link.rel = "noopener";
+        link.textContent = ((a.tipo||"").indexOf("pdf")>=0 ? "📄 " : "🖼 ") + (a.nome || "anexo");
+        link.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;font-size:13px";
+        var del = document.createElement("button");
+        del.textContent = "🗑";
+        del.className = "mini";
+        del.title = "Remover";
+        del.addEventListener("click", function(){
+          lista.splice(idx,1);
+          if (typeof touch === "function") touch(d);
+          if (typeof save === "function") save();
+          try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
+          desenhar();
+          forcarReinjetar(driverId);
+        });
+        row.appendChild(link); row.appendChild(del);
+        box.appendChild(row);
+      });
+      var addBtn = document.createElement("button");
+      addBtn.className = "mini";
+      addBtn.style.cssText = "background:var(--teal,#3B8C82);color:#fff;width:100%;margin-top:10px";
+      addBtn.textContent = "📎 Adicionar (foto ou arquivo)";
+      addBtn.addEventListener("click", function(){ inp.value = ""; inp.click(); });
+      box.appendChild(addBtn);
+      var fechar = document.createElement("button");
+      fechar.className = "mini";
+      fechar.style.cssText = "width:100%;margin-top:8px";
+      fechar.textContent = "Fechar";
+      fechar.addEventListener("click", function(){ wrap.remove(); });
+      box.appendChild(fechar);
+      box.appendChild(inp);
+    }
+
+    inp.addEventListener("change", function(){
+      var files = inp.files;
+      if(!files || !files.length) return;
+      var restantes = files.length;
+      Array.prototype.forEach.call(files, function(file){
+        lerArquivo(file, function(item){
+          if(item){
+            d.anexosEntrega[key] = d.anexosEntrega[key] || [];
+            d.anexosEntrega[key].push(item);
+          }
+          restantes--;
+          if(restantes<=0){
+            if (typeof touch === "function") touch(d);
+            if (typeof save === "function") save();
+            try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
+            desenhar();
+            forcarReinjetar(driverId);
+          }
+        });
+      });
+    });
+
+    wrap.appendChild(box);
+    wrap.addEventListener("click", function(ev){ if(ev.target===wrap) wrap.remove(); });
+    document.body.appendChild(wrap);
+    desenhar();
+  }
+  window.__abrirAnexosEntrega = abrirAnexos;
+
+  function injetarAnexos(){
+    document.querySelectorAll(".erow").forEach(function(row){
+      if(row.getAttribute("data-anexoinj")) return;
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(!chk) return;
+      var id = chk.getAttribute("data-id");
+      var i = parseInt(chk.getAttribute("data-i"),10);
+      var d = (typeof driver === "function") ? driver(id) : null;
+      if(!d || !d.entregas || !d.entregas[i]) return;
+      row.setAttribute("data-anexoinj","1");
+      var e = d.entregas[i];
+      var key = chaveEntrega(e);
+      var meta = row.querySelector(".emeta");
+      if(!meta) return;
+      var n = (d.anexosEntrega && d.anexosEntrega[key]) ? d.anexosEntrega[key].length : 0;
+      var btn = document.createElement("span");
+      btn.className = "chip";
+      btn.style.cssText = "cursor:pointer" + (n>0 ? "" : ";opacity:.55");
+      btn.title = "Anexar/ver notas e comprovantes desta entrega";
+      btn.textContent = "📎" + (n>0 ? " "+n : "");
+      btn.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        abrirAnexos(id, key);
+      });
+      meta.appendChild(btn);
+    });
+  }
+  window.injetarAnexos = injetarAnexos;
+
+  var origRender = window.render;
+  if (typeof origRender === "function"){
+    window.render = function(){
+      var r = origRender.apply(this, arguments);
+      setTimeout(injetarAnexos, 20);
+      return r;
+    };
+  }
+  setInterval(injetarAnexos, 2000);
+})();
+</script>
+
+<script>
+/* PATCH_TEMPOCLIENTE_ROBUSTO v1 - conserta o cronometro "tempo em cada cliente" (Relatorios).
+   Problema: o tick antigo (__tickTempos, a cada 30s) nao sobrevive a gaps longos de aba
+   (instabilidade do bridge do Chrome), e ao voltar fecha a visita usando o intervalo inteiro
+   desde o ultimo tick como se o caminhao tivesse ficado parado la o tempo todo - gerando
+   numeros absurdos (ex: 51h, 34h numa parada so). Corrigido em 20/08/2026, pedido do dono. */
+(function(){
+  if (window.__PATCH_TEMPOCLIENTE_ROBUSTO) return;
+  window.__PATCH_TEMPOCLIENTE_ROBUSTO = "v1";
+  var MAX_SESSAO_MS = 8*60*60*1000; // 8h teto por visita
+
+  function limpezaUnica(){
+    try{
+      var todos = (S.drivers||[]).concat(S.arquivo||[]);
+      var mudou = false;
+      todos.forEach(function(d){
+        var t = d.tempos || {};
+        Object.keys(t).forEach(function(k){
+          var reg = t[k];
+          if(reg && !reg._corrigido20ago && (reg.total||0) > MAX_SESSAO_MS){
+            reg._totalOriginal20ago = reg.total;
+            reg.total = MAX_SESSAO_MS;
+            reg._corrigido20ago = true;
+            mudou = true;
+          }
+        });
+      });
+      if(mudou){ try{ save(); }catch(e){} }
+    }catch(e){}
+  }
+
+  function tickRobusto(){
+    try{
+      if(typeof S === "undefined" || !Array.isArray(S.drivers)) return;
+      var agora = Date.now(), mudouGeral = false;
+      S.drivers.forEach(function(d){
+        if(!d) return;
+        var i = -1;
+        try{ i = entregaNaReferencia(d); }catch(e){}
+        var atKey = (i>=0 && d.entregas && d.entregas[i]) ? __tKey(d.entregas[i]) : null;
+        var t = d.tempos = d.tempos || {};
+        var mudou = false;
+        Object.keys(t).forEach(function(k){
+          if(k !== atKey && t[k] && t[k].desde){
+            var delta = agora - t[k].desde;
+            if(delta > MAX_SESSAO_MS){ delta = MAX_SESSAO_MS; t[k]._corrigido20ago = true; }
+            t[k].total = (t[k].total||0) + delta;
+            t[k].desde = null;
+            mudou = true;
+          }
+        });
+        if(atKey){
+          if(!t[atKey]){ t[atKey] = {total:0, desde: agora}; mudou = true; }
+          else if(!t[atKey].desde){ t[atKey].desde = agora; mudou = true; }
+        }
+        if(mudou){ mudouGeral = true; try{ touch(d); }catch(e){} }
+      });
+      if(mudouGeral){ try{ save(); }catch(e){} }
+    }catch(e){}
+  }
+
+  limpezaUnica();
+  setTimeout(tickRobusto, 2000);
+  setInterval(tickRobusto, 3000);
+
+  var origRender = window.render;
+  if (typeof origRender === "function"){
+    var ultimoTick = 0;
+    window.render = function(){
+      var r = origRender.apply(this, arguments);
+      var agora = Date.now();
+      if(agora - ultimoTick > 300){ ultimoTick = agora; try{ tickRobusto(); }catch(e){} }
+      return r;
+    };
+  }
+  window.__tickTemposRobusto = tickRobusto;
+})();
+</script>
+<script>
+/* PATCH_ANEXO_VISUALIZAR_FIX v1 - corrige "anexei mas nao consigo ver" nas notas/comprovantes
+   (PATCH_ANEXOSENTREGA). Causa: o link abria direto o data: URL em nova aba (target=_blank),
+   e o Chrome bloqueia navegacao de topo pra data: URL por seguranca (fica preso, nada abre).
+   Corrigido convertendo o data: URL pra um blob: URL na hora do clique - Chrome permite abrir
+   blob: URL numa aba nova normalmente. Pedido do dono, 20/08/2026. */
+(function(){
+  if (window.__PATCH_ANEXO_VISUALIZAR_FIX) return;
+  window.__PATCH_ANEXO_VISUALIZAR_FIX = "v1";
+
+  function dataUrlParaBlob(dataUrl){
+    var virgula = dataUrl.indexOf(",");
+    var meta = dataUrl.slice(5, virgula);
+    var isBase64 = meta.indexOf("base64") >= 0;
+    var mime = (meta.split(";")[0]) || "application/octet-stream";
+    var dados = dataUrl.slice(virgula+1);
+    var binario = isBase64 ? atob(dados) : decodeURIComponent(dados);
+    var arr = new Uint8Array(binario.length);
+    for (var i=0; i<binario.length; i++) arr[i] = binario.charCodeAt(i);
+    return new Blob([arr], {type: mime});
+  }
+
+  document.addEventListener("click", function(ev){
+    var el = ev.target;
+    while (el && el.tagName !== "A") el = el.parentElement;
+    if (!el) return;
+    var modal = document.getElementById("__anexoModal");
+    if (!modal || !modal.contains(el)) return;
+    var href = el.getAttribute("href") || "";
+    if (href.indexOf("data:") !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    try {
+      var blob = dataUrlParaBlob(href);
+      var url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(function(){ try { URL.revokeObjectURL(url); } catch(e){} }, 60000);
+    } catch(e) {
+      alert("N\u00e3o consegui abrir esse anexo. Tenta remover e anexar de novo.");
+    }
+  }, true);
+})();
+</script>
+</html>
