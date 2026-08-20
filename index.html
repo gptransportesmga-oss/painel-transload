@@ -3744,4 +3744,27 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
 })();
 </script>
+<script>
+/* PATCH_STATUS_FINALIZADO_FIXO v1 - pedido do dono, 21/08/2026: corrige bug em que um
+   caminhao ja finalizado (MDF-e fechado no BSoft, sem sinal ha horas) voltava sozinho pra
+   "em rota" assim que o rastreio do Ca2Track mandava uma posicao nova (ex: RHT-8D09).
+   Causa: statusAutomatico() so olhava d.tracking no final e ignorava que o caminhao ja
+   tinha sido finalizado de proposito. Corrigido: uma vez finalizado com o MDF-e fechado
+   (bsoftAberto=false), o status fica fixo em "finalizado" ate o BSoft abrir um MDF-e novo
+   pra essa placa (bsoftAberto volta a true) - só aí ele reentra no fluxo normal. Para
+   desfazer, apague este bloco (volta a funcao original). */
+(function(){
+  if (window.__PATCH_STATUS_FINALIZADO_FIXO) return;
+  if (typeof semSinalHaHoras !== "function" || typeof entregaNaReferencia !== "function") return;
+  window.__PATCH_STATUS_FINALIZADO_FIXO = "v1";
+  window.statusAutomatico = function(d){
+    if(d.semNf) return "finalizado";
+    if(d.status === "finalizado" && !d.bsoftAberto) return "finalizado";
+    if((d.status==="em_rota" || d.status==="no_cliente") && !d.bsoftAberto && semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return "finalizado";
+    if(entregaNaReferencia(d) >= 0) return "no_cliente";
+    if(d.tracking) return "em_rota";
+    return d.status;
+  };
+})();
+</script>
 </html>
