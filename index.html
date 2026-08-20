@@ -3383,4 +3383,117 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   }, true);
 })();
 </script>
+<script>
+/* PATCH_PROXIMO_E_HORAS v1 - pedido do dono, 20/08/2026:
+   1) Sinalizar no card quando o caminhao esta ATE 2km do cliente (alem dos 200m que ja
+      contam como "No cliente") - chip amarelo "Proximo" no topo do card, do lado dos
+      chips de velocidade/temperatura.
+   2) Mostrar do ladinho de cada entrega (na lista de Entregas do card) quanto tempo o
+      caminhao ja ficou parado naquele cliente - reusa o mesmo cronometro d.tempos do
+      relatorio "Tempo em cada cliente" (PATCH_TEMPOCLIENTE_ROBUSTO), so que exibido
+      tambem no card, nao so no relatorio.
+   Nao mexe em d.status nem nas regras de conclusao automatica de entrega - e so
+   informativo, no fica so o que ja tinha. Para desfazer, apague este bloco. */
+(function(){
+  if (window.__PATCH_PROXIMO_E_HORAS) return;
+  window.__PATCH_PROXIMO_E_HORAS = "v1";
+  var RAIO_PROXIMO_M = 2000;
+
+  function fmtDuracao(ms){
+    if(!ms || ms < 60000) return null;
+    var min = Math.round(ms/60000);
+    var h = Math.floor(min/60), m = min%60;
+    return h > 0 ? (h+"h"+(m?(" "+m+"min"):"")) : (m+"min");
+  }
+
+  function tempoDaEntrega(d, e){
+    try{
+      var chave = (typeof __tKey === "function") ? __tKey(e) : null;
+      if(!chave || !d.tempos || !d.tempos[chave]) return null;
+      var reg = d.tempos[chave];
+      var total = reg.total || 0;
+      if(reg.desde) total += (Date.now() - reg.desde);
+      return fmtDuracao(total);
+    }catch(err){ return null; }
+  }
+
+  function acharDriver(id){
+    if(typeof driver === "function") return driver(id);
+    return (S.drivers||[]).concat(S.arquivo||[]).find(function(x){ return x.id===id; });
+  }
+
+  function injetarHorasEntrega(){
+    document.querySelectorAll(".erow").forEach(function(row){
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(!chk) return;
+      var id = chk.getAttribute("data-id");
+      var i = parseInt(chk.getAttribute("data-i"),10);
+      var d = acharDriver(id);
+      if(!d || !d.entregas || !d.entregas[i]) return;
+      var e = d.entregas[i];
+      var meta = row.querySelector(".emeta");
+      if(!meta) return;
+      var txt = tempoDaEntrega(d, e);
+      var marcador = meta.querySelector('[data-horaent]');
+      if(txt){
+        if(!marcador){
+          marcador = document.createElement("span");
+          marcador.setAttribute("data-horaent","1");
+          marcador.title = "Tempo parado nesse cliente";
+          meta.appendChild(marcador);
+        }
+        marcador.textContent = "⏱ " + txt;
+      } else if(marcador){
+        marcador.remove();
+      }
+    });
+  }
+
+  function injetarChipProximidade(){
+    document.querySelectorAll(".card").forEach(function(card){
+      var idEl = card.querySelector("[data-id]");
+      var id = idEl ? idEl.getAttribute("data-id") : null;
+      if(!id) return;
+      var d = acharDriver(id);
+      if(!d || !d.tracking) return;
+      var chips = card.querySelector(".chips");
+      if(!chips) return;
+      var velha = chips.querySelector('[data-proxchip]');
+      if(velha) velha.remove();
+      var dist = window.distanciaRefMetros ? window.distanciaRefMetros(d.tracking.referencia || d.tracking.posicao) : null;
+      if(dist === null) return;
+      var raioCliente = window.RAIO_CLIENTE_M || 200;
+      if(dist <= raioCliente){
+        var s1 = document.createElement("span");
+        s1.className = "chip"; s1.setAttribute("data-proxchip","1");
+        s1.style.cssText = "background:#7C6FA8;color:#fff";
+        s1.textContent = "📍 No cliente";
+        chips.appendChild(s1);
+      } else if(dist <= RAIO_PROXIMO_M){
+        var s2 = document.createElement("span");
+        s2.className = "chip"; s2.setAttribute("data-proxchip","1");
+        s2.style.cssText = "background:#E8A23C;color:#1B1E24";
+        var txt2 = dist >= 1000 ? (Math.round(dist/100)/10)+"km" : Math.round(dist)+"m";
+        s2.textContent = "🟡 Próximo (" + txt2 + ")";
+        chips.appendChild(s2);
+      }
+    });
+  }
+
+  function injetarTudo(){
+    try{ injetarHorasEntrega(); }catch(e){}
+    try{ injetarChipProximidade(); }catch(e){}
+  }
+
+  var origRender = window.render;
+  if (typeof origRender === "function"){
+    window.render = function(){
+      var r = origRender.apply(this, arguments);
+      setTimeout(injetarTudo, 30);
+      return r;
+    };
+  }
+  setInterval(injetarTudo, 5000);
+})();
+</script>
 </html>
