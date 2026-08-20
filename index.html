@@ -3261,4 +3261,83 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
   setInterval(injetarAnexos, 2000);
 })();
 </script>
+
+<script>
+/* PATCH_TEMPOCLIENTE_ROBUSTO v1 - conserta o cronometro "tempo em cada cliente" (Relatorios).
+   Problema: o tick antigo (__tickTempos, a cada 30s) nao sobrevive a gaps longos de aba
+   (instabilidade do bridge do Chrome), e ao voltar fecha a visita usando o intervalo inteiro
+   desde o ultimo tick como se o caminhao tivesse ficado parado la o tempo todo - gerando
+   numeros absurdos (ex: 51h, 34h numa parada so). Corrigido em 20/08/2026, pedido do dono. */
+(function(){
+  if (window.__PATCH_TEMPOCLIENTE_ROBUSTO) return;
+  window.__PATCH_TEMPOCLIENTE_ROBUSTO = "v1";
+  var MAX_SESSAO_MS = 8*60*60*1000; // 8h teto por visita
+
+  function limpezaUnica(){
+    try{
+      var todos = (S.drivers||[]).concat(S.arquivo||[]);
+      var mudou = false;
+      todos.forEach(function(d){
+        var t = d.tempos || {};
+        Object.keys(t).forEach(function(k){
+          var reg = t[k];
+          if(reg && !reg._corrigido20ago && (reg.total||0) > MAX_SESSAO_MS){
+            reg._totalOriginal20ago = reg.total;
+            reg.total = MAX_SESSAO_MS;
+            reg._corrigido20ago = true;
+            mudou = true;
+          }
+        });
+      });
+      if(mudou){ try{ save(); }catch(e){} }
+    }catch(e){}
+  }
+
+  function tickRobusto(){
+    try{
+      if(typeof S === "undefined" || !Array.isArray(S.drivers)) return;
+      var agora = Date.now(), mudouGeral = false;
+      S.drivers.forEach(function(d){
+        if(!d) return;
+        var i = -1;
+        try{ i = entregaNaReferencia(d); }catch(e){}
+        var atKey = (i>=0 && d.entregas && d.entregas[i]) ? __tKey(d.entregas[i]) : null;
+        var t = d.tempos = d.tempos || {};
+        var mudou = false;
+        Object.keys(t).forEach(function(k){
+          if(k !== atKey && t[k] && t[k].desde){
+            var delta = agora - t[k].desde;
+            if(delta > MAX_SESSAO_MS){ delta = MAX_SESSAO_MS; t[k]._corrigido20ago = true; }
+            t[k].total = (t[k].total||0) + delta;
+            t[k].desde = null;
+            mudou = true;
+          }
+        });
+        if(atKey){
+          if(!t[atKey]){ t[atKey] = {total:0, desde: agora}; mudou = true; }
+          else if(!t[atKey].desde){ t[atKey].desde = agora; mudou = true; }
+        }
+        if(mudou){ mudouGeral = true; try{ touch(d); }catch(e){} }
+      });
+      if(mudouGeral){ try{ save(); }catch(e){} }
+    }catch(e){}
+  }
+
+  limpezaUnica();
+  setTimeout(tickRobusto, 2000);
+  setInterval(tickRobusto, 15000);
+
+  var origRender = window.render;
+  if (typeof origRender === "function"){
+    var ultimoTick = Date.now();
+    window.render = function(){
+      var r = origRender.apply(this, arguments);
+      var agora = Date.now();
+      if(agora - ultimoTick > 8000){ ultimoTick = agora; try{ tickRobusto(); }catch(e){} }
+      return r;
+    };
+  }
+  window.__tickTemposRobusto = tickRobusto;
+})();
+</script>
 </html>
