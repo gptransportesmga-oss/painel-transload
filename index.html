@@ -2930,24 +2930,28 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 })();
 </script>
 <script>
-/* PATCH_ESPELHAMENTO v2 - sobe a placa pro quadro assim que ela aparece no rastreio Ca2Track e
+/* PATCH_ESPELHAMENTO v3 - sobe a placa pro quadro assim que ela aparece no rastreio Ca2Track e
    ainda nao esta no quadro, em vez de esperar o ciclo do BSoft (ate 1h). Entra como "carregando";
    o proximo ciclo do BSoft preenche mdfe/entregas normalmente.
    v2 (18/08/2026): a v1 guardava "ultima vez que vi essa placa" so no localStorage do navegador
    que estivesse aberto na hora - como o painel roda em varios computadores, uma placa podia
    aparecer sem que o navegador certo estivesse com o ciclo rodando naquele momento, e nunca
-   subir (foi o que aconteceu com a MIZ-0858, ficou de fora). Agora:
-   - Placa que NUNCA existiu no quadro nem no historico (S.arquivo) sobe direto, sempre, de
-     qualquer computador - sem risco de virar fantasma, porque nunca teve viagem antes.
-   - Placa que ja tem viagem finalizada no historico so sobe de novo depois de um gap real de
-     sinal (fica sem transmitir e volta) - e o "ultima vez visto" agora fica em S.rastreioVisto,
-     que sincroniza pelo Supabase junto com os motoristas, entao funciona em qualquer computador
-     que tenha o painel aberto, nao so o que capturou o gap. */
+   subir (foi o que aconteceu com a MIZ-0858, ficou de fora).
+   v3 (21/08/2026, pedido do dono): a v2 tambem "ressuscitava" placa que ja tinha viagem
+   finalizada E ARQUIVADA, bastando um gap de 2h sem sinal de GPS seguido de sinal de novo -
+   isso e MUITO comum com caminhao parado no patio/oficina (motorista desliga, sai, volta,
+   liga de novo) e nao significa viagem nova nenhuma. Resultado: placa finalizada e ate
+   encerrada no BSoft voltava pro quadro sozinha, e como o card restaurado levava consigo as
+   ENTREGAS ANTIGAS (da viagem ja concluida), a funcao entregaNaReferencia() por vezes batia
+   com a posicao atual do caminhao (ele voltou pro patio perto do mesmo cliente de antes) e
+   o status virava "no_cliente" na cara dura - viagem fantasma. A partir da v3, so sobe
+   automatico pelo rastreio a placa que NUNCA existiu no quadro nem no historico (S.arquivo).
+   Placa ja arquivada so volta ao quadro quando o BSoft confirmar uma viagem nova de verdade
+   (MDF-e aberto de novo), na rotina normal de atualizacao - nunca so por causa do GPS. */
 (function(){
-  if (window.__PATCH_ESPELHAMENTO === "v2") return;
-  window.__PATCH_ESPELHAMENTO = "v2";
+  if (window.__PATCH_ESPELHAMENTO === "v3") return;
+  window.__PATCH_ESPELHAMENTO = "v3";
   var LS_KEY = "painel-viagens-rastreio-visto";
-  var GAP_MS = 2*60*60*1000;
 
   if (typeof S !== "undefined" && !S.rastreioVisto) {
     S.rastreioVisto = {};
@@ -2985,10 +2989,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       var noQuadro = S.drivers.some(function(d){ return normalizePlaca(d.placa)===p; });
       if(noQuadro){ S.rastreioVisto[p] = agora; return; }
       var noArquivo = (S.arquivo||[]).some(function(d){ return normalizePlaca(d.placa)===p; });
-      var visto = S.rastreioVisto[p];
       if(!noArquivo){
-        novos.push(v);
-      } else if(visto && (agora - visto) >= GAP_MS){
         novos.push(v);
       }
       S.rastreioVisto[p] = agora;
@@ -2998,33 +2999,21 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     if(!novos.length) return;
     novos.forEach(function(v){
       var p = v.placa;
-      var idxArq = S.arquivo.findIndex(function(d){ return normalizePlaca(d.placa)===p; });
       var motoristaFmt = (v.motorista||"").toUpperCase();
-      if(idxArq >= 0){
-        var restaurado = S.arquivo.splice(idxArq,1)[0];
-        restaurado.status = "carregando";
-        restaurado.bsoftAberto = false;
-        restaurado.semNf = false;
-        restaurado.tracking = v.tracking || null;
-        restaurado.updatedAt = agora;
-        if(!restaurado.motorista && motoristaFmt) restaurado.motorista = motoristaFmt;
-        S.drivers.unshift(restaurado);
-      } else {
-        S.drivers.unshift({
-          id: "d-"+agora+"-"+Math.floor(Math.random()*1000),
-          motorista: motoristaFmt,
-          placa: formatarPlaca(p),
-          mdfe: "",
-          status: "carregando",
-          problema: false,
-          obs: "criado automatico pelo rastreio - aguardando BSoft",
-          updatedAt: agora,
-          tracking: v.tracking || null,
-          entregas: [],
-          semNf: false,
-          bsoftAberto: false
-        });
-      }
+      S.drivers.unshift({
+        id: "d-"+agora+"-"+Math.floor(Math.random()*1000),
+        motorista: motoristaFmt,
+        placa: formatarPlaca(p),
+        mdfe: "",
+        status: "carregando",
+        problema: false,
+        obs: "criado automatico pelo rastreio - aguardando BSoft",
+        updatedAt: agora,
+        tracking: v.tracking || null,
+        entregas: [],
+        semNf: false,
+        bsoftAberto: false
+      });
     });
     save();
     if (typeof aplicarStatusAuto === "function") aplicarStatusAuto();
@@ -3745,21 +3734,29 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 })();
 </script>
 <script>
-/* PATCH_STATUS_FINALIZADO_FIXO v1 - pedido do dono, 21/08/2026: corrige bug em que um
-   caminhao ja finalizado (MDF-e fechado no BSoft, sem sinal ha horas) voltava sozinho pra
-   "em rota" assim que o rastreio do Ca2Track mandava uma posicao nova (ex: RHT-8D09).
-   Causa: statusAutomatico() so olhava d.tracking no final e ignorava que o caminhao ja
-   tinha sido finalizado de proposito. Corrigido: uma vez finalizado com o MDF-e fechado
-   (bsoftAberto=false), o status fica fixo em "finalizado" ate o BSoft abrir um MDF-e novo
-   pra essa placa (bsoftAberto volta a true) - só aí ele reentra no fluxo normal. Para
-   desfazer, apague este bloco (volta a funcao original). */
+/* PATCH_STATUS_FINALIZADO_FIXO v2 - pedido do dono, 21/08/2026 (v1); reforçado 21/08/2026 (v2)
+   depois do dono reportar que VÁRIAS placas finalizadas/encerradas continuavam voltando pro
+   painel e algumas voltando pra "no cliente".
+   v1: corrige bug em que um caminhao ja finalizado (MDF-e fechado no BSoft, sem sinal ha
+   horas) voltava sozinho pra "em rota" assim que o rastreio do Ca2Track mandava uma posicao
+   nova (ex: RHT-8D09) - so travava "finalizado" quando bsoftAberto=false.
+   v2: o travamento condicionado a "!d.bsoftAberto" ainda deixava passar um caso real - um
+   card finalizado NA MAO (botao "fin", ou automatico quando todas as entregas ficam
+   concluidas) enquanto bsoftAberto ainda estava true (BSoft so vai confirmar o fechamento no
+   proximo ciclo de sincronizacao) podia ser desfeito pelo proprio statusAutomatico() minutos
+   depois, assim que o rastreio girasse de novo - exatamente o "mesmo finalizados... estao
+   voltando" que o dono reportou. Corrigido: "finalizado" agora e estado terminal incondicional
+   nesta funcao (nao depende mais de bsoftAberto). A UNICA forma de sair dele e a propria
+   rotina de sincronizacao BSoft (Passo 2 do playbook) setar d.status diretamente quando o
+   MDF-e reabrir de verdade - nunca esta funcao automatica sozinha. Para desfazer, apague este
+   bloco (volta a funcao anterior). */
 (function(){
-  if (window.__PATCH_STATUS_FINALIZADO_FIXO) return;
+  if (window.__PATCH_STATUS_FINALIZADO_FIXO === "v2") return;
   if (typeof semSinalHaHoras !== "function" || typeof entregaNaReferencia !== "function") return;
-  window.__PATCH_STATUS_FINALIZADO_FIXO = "v1";
+  window.__PATCH_STATUS_FINALIZADO_FIXO = "v2";
   window.statusAutomatico = function(d){
     if(d.semNf) return "finalizado";
-    if(d.status === "finalizado" && !d.bsoftAberto) return "finalizado";
+    if(d.status === "finalizado") return "finalizado";
     if((d.status==="em_rota" || d.status==="no_cliente") && !d.bsoftAberto && semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return "finalizado";
     if(entregaNaReferencia(d) >= 0) return "no_cliente";
     if(d.tracking) return "em_rota";
