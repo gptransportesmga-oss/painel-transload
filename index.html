@@ -4129,4 +4129,55 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   }
 })();
 </script>
+<script>
+/* PATCH_SESSOES_TRAVA v1 (21/08/2026) -- corrige o "derrubar sessao": antes, a aba derrubada
+   so recarregava quando o checador de 20s rodava -- e ENQUANTO ISSO, se essa aba tivesse
+   dado velho (ex: motorista que ja foi removido em outro lugar), o envio automatico dela
+   podia salvar esse dado velho no meio do caminho, antes do recarregamento acontecer.
+   Agora: toda vez que o Painel for MESMO enviar uma alteracao pro servidor, ele confere na
+   hora (numa consulta bem pequena, so a lista de sessoes) se essa sessao foi derrubada. Se
+   foi: cancela o envio (nao deixa o dado velho ser salvo) e recarrega a pagina na hora, em
+   vez de esperar o proximo ciclo de 20s.
+   Limite que continua o mesmo de antes: uma aba com codigo de ANTES de o recurso de sessoes
+   existir nao roda nada disso -- precisa atualizar ela ao menos uma vez (Ctrl+Shift+R). */
+(function(){
+  if (window.__PATCH_SESSOES_TRAVA) return;
+  window.__PATCH_SESSOES_TRAVA = "v1";
+
+  if (typeof window.enviarAoServidor !== "function") return;
+
+  var SESSAO_ID_KEY = "painel-viagens-sessao-id";
+  var _enviarOriginal = window.enviarAoServidor;
+
+  async function estaDerrubadaAgora(id, cfg){
+    var u = cfg.url.replace(/\/+$/,"") + "/rest/v1/painel_sessoes?id=eq." + encodeURIComponent(cfg.quadro||"transload") + "&select=sessoes";
+    var r = await fetch(u, { headers: sbHeaders(cfg) });
+    if(!r.ok) return false;
+    var j = await r.json();
+    var linha = Array.isArray(j) && j.length ? j[0] : null;
+    var sessoes = (linha && linha.sessoes) || {};
+    return !!(sessoes[id] && sessoes[id].revogado);
+  }
+
+  window.enviarAoServidor = async function(){
+    try{
+      var id = null;
+      try{ id = localStorage.getItem(SESSAO_ID_KEY); }catch(e){}
+      if (id) {
+        var cfg = (typeof lerSync === "function") ? lerSync() : null;
+        if (cfg && cfg.url && cfg.key) {
+          var derrubada = await estaDerrubadaAgora(id, cfg);
+          if (derrubada) {
+            try{ localStorage.removeItem(SESSAO_ID_KEY); }catch(e){}
+            alert("Sua sessão do Painel foi encerrada por um administrador. A página vai recarregar.");
+            location.reload();
+            return;
+          }
+        }
+      }
+    }catch(e){ /* checagem falhou (sem internet etc) -- segue enviando normal, nao trava o painel */ }
+    return _enviarOriginal.apply(this, arguments);
+  };
+})();
+</script>
 </html>
