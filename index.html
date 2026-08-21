@@ -3905,4 +3905,169 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   }
 })();
 </script>
+<script>
+/* PATCH_SESSOES v1 (21/08/2026) — pedido do dono: poder ver quem está com o Painel aberto e
+   derrubar (forçar sair/recarregar) qualquer sessão à distância. Não existia isso antes — o
+   login era só uma senha local, sem lista de quem estava conectado.
+   Como funciona:
+   - Cada aparelho/aba ganha um id fixo (guardado no localStorage) e aparece na lista com o nome
+     do usuário logado (usuarioAtual()) e o navegador/sistema (Chrome em Windows, etc).
+   - A cada 60s manda um "sinal de vida" (hora atual) pro quadro compartilhado; a cada 20s confere
+     se a própria sessão foi marcada como derrubada por alguém.
+   - Se foi derrubada: avisa, esquece o id antigo (pra não entrar em loop) e recarrega a página —
+     na volta, se ainda tiver "manter conectado", pede login nesse aparelho de novo dependendo do
+     que a tela de login checar.
+   - Botão novo "👥 Sessões" na barra, ao lado de Relatórios, abre a lista com botão Derrubar.
+   IMPORTANTE — limite conhecido: isso só funciona em abas que JÁ carregaram este patch. Uma aba
+   com o código velho (de antes desse patch existir) não vai obedecer ao "derrubar" até alguém
+   atualizar ela manualmente uma vez (Ctrl+Shift+R). Depois dessa primeira atualização, ela passa
+   a responder a "Derrubar" normalmente, para sempre. */
+(function(){
+  if (window.__PATCH_SESSOES) return;
+  window.__PATCH_SESSOES = "v1";
+
+  var SESSAO_ID_KEY = "painel-viagens-sessao-id";
+
+  function meuSessionId(){
+    try{
+      var id = localStorage.getItem(SESSAO_ID_KEY);
+      if(!id){
+        id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+        localStorage.setItem(SESSAO_ID_KEY, id);
+      }
+      return id;
+    }catch(e){ return "sem-id"; }
+  }
+
+  function labelDispositivo(){
+    var ua = navigator.userAgent || "";
+    var so = /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "Mac" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : "outro sistema";
+    var nav = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "navegador";
+    return nav + " em " + so;
+  }
+
+  function registrarSessao(){
+    if(!S.sessoes) S.sessoes = {};
+    var id = meuSessionId();
+    var atual = S.sessoes[id] || {};
+    S.sessoes[id] = {
+      usuario: (typeof usuarioAtual === "function") ? (usuarioAtual() || "") : "",
+      label: labelDispositivo(),
+      atualizadoEm: Date.now(),
+      revogado: !!atual.revogado
+    };
+  }
+
+  // ---- inclui S.sessoes no envio/recebimento do quadro compartilhado ----
+  if (typeof window.estadoLocal === "function") {
+    var _estadoLocalOriginal = window.estadoLocal;
+    window.estadoLocal = function(){
+      var o = _estadoLocalOriginal.apply(this, arguments);
+      if (o && typeof o === "object") o.sessoes = S.sessoes || {};
+      return o;
+    };
+  }
+
+  if (typeof window.puxarDoServidor === "function") {
+    var _puxarDoServidorOriginal = window.puxarDoServidor;
+    window.puxarDoServidor = async function(){
+      var resultado = await _puxarDoServidorOriginal.apply(this, arguments);
+      try{
+        if (typeof lerSync === "function" && typeof sbLer === "function") {
+          var cfg = lerSync();
+          if (cfg && cfg.url && cfg.key) {
+            var linha = await sbLer(cfg);
+            var remoto = (linha && linha.dados && linha.dados.sessoes) || {};
+            if (!S.sessoes) S.sessoes = {};
+            Object.keys(remoto).forEach(function(id){
+              var r = remoto[id], l = S.sessoes[id];
+              if (!l || (r.atualizadoEm||0) >= (l.atualizadoEm||0)) S.sessoes[id] = r;
+            });
+          }
+        }
+      }catch(e){ /* servidor fora do ar: segue só com o que tinha localmente */ }
+      return resultado;
+    };
+  }
+
+  // ---- checa se essa sessão foi derrubada ----
+  async function checarDerrubado(){
+    try{
+      if (typeof puxarDoServidor === "function") await puxarDoServidor();
+    }catch(e){}
+    var id = meuSessionId();
+    if (S.sessoes && S.sessoes[id] && S.sessoes[id].revogado) {
+      try{ localStorage.removeItem(SESSAO_ID_KEY); }catch(e){}
+      alert("Sua sessão do Painel foi encerrada por um administrador. A página vai recarregar.");
+      location.reload();
+    }
+  }
+
+  function sinalDeVida(){
+    if (typeof estaLogado === "function" && !estaLogado()) return;
+    registrarSessao();
+    if (typeof marcarAlteracao === "function") marcarAlteracao();
+  }
+
+  setInterval(sinalDeVida, 60000);
+  setInterval(checarDerrubado, 20000);
+  setTimeout(sinalDeVida, 3000);
+
+  // ---- botão + modal ----
+  window.abrirSessoes = function(){
+    var lista = Object.keys(S.sessoes||{}).map(function(id){
+      var o = Object.assign({id:id}, S.sessoes[id]); return o;
+    });
+    lista.sort(function(a,b){ return (b.atualizadoEm||0)-(a.atualizadoEm||0); });
+    var meu = meuSessionId();
+    var html = '<div id="__modalSessoes" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:inherit">' +
+      '<div style="background:#fff;border-radius:10px;padding:20px;max-width:480px;width:92%;max-height:80vh;overflow:auto;color:#1B1E24">' +
+      '<h3 style="margin:0 0 12px">👥 Quem está conectado</h3>';
+    if (!lista.length) html += '<p style="color:#666">Nenhuma sessão registrada ainda.</p>';
+    lista.forEach(function(s){
+      var minAtras = Math.max(0, Math.round((Date.now()-(s.atualizadoEm||0))/60000));
+      var visto = minAtras < 60 ? (minAtras + "min atrás") : (Math.round(minAtras/60) + "h atrás");
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;gap:10px">' +
+        '<div><b>'+esc(s.nome||s.usuario||"?")+'</b>'+(s.id===meu?' <span style="color:#3C9B5F">(este aparelho)</span>':'')+
+        '<br><span style="color:#888;font-size:12px">'+esc(s.label||"")+' — visto '+visto+(s.revogado?' — <b style="color:#C64545">DERRUBADO</b>':'')+'</span></div>' +
+        (s.revogado ? '' : '<button data-kick="'+s.id+'" style="background:#C64545;color:#fff;border:0;padding:7px 12px;border-radius:6px;cursor:pointer;white-space:nowrap">Derrubar</button>') +
+        '</div>';
+    });
+    html += '<div style="margin-top:14px;text-align:right"><button id="__fecharSessoes" style="padding:8px 14px;border-radius:6px;border:0;background:#eee;cursor:pointer">Fechar</button></div>' +
+      '</div></div>';
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div.firstChild);
+    document.getElementById('__fecharSessoes').onclick = function(){ document.getElementById('__modalSessoes').remove(); };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-kick]'), function(btn){
+      btn.onclick = function(){
+        var id = btn.getAttribute('data-kick');
+        if (!confirm('Derrubar essa sessão? Ela vai ser desconectada e ter que entrar de novo.')) return;
+        if (!S.sessoes) S.sessoes = {};
+        if (!S.sessoes[id]) S.sessoes[id] = {};
+        S.sessoes[id].revogado = true;
+        S.sessoes[id].atualizadoEm = Date.now();
+        if (typeof marcarAlteracao === "function") marcarAlteracao();
+        document.getElementById('__modalSessoes').remove();
+        window.abrirSessoes();
+      };
+    });
+  };
+
+  function criarBotao(){
+    if (document.getElementById('__btnSessoes')) return;
+    var ref = document.getElementById('__btnRel') || document.getElementById('btnCfg');
+    if (!ref || !ref.parentElement) { setTimeout(criarBotao, 500); return; }
+    var b = document.createElement('button');
+    b.id = '__btnSessoes';
+    b.className = 'btn btn-ghost';
+    b.textContent = '👥 Sessões';
+    b.onclick = window.abrirSessoes;
+    ref.parentElement.insertBefore(b, ref.nextSibling);
+  }
+  criarBotao();
+
+  registrarSessao();
+})();
+</script>
 </html>
