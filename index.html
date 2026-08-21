@@ -4070,4 +4070,63 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   registrarSessao();
 })();
 </script>
+<script>
+/* PATCH_HISTORICO_SOB_DEMANDA v1 (21/08/2026) -- pedido do dono: reduzir o trafego do banco.
+   Antes, toda sincronizacao (a cada 20-60s, em cada aba aberta) baixava o quadro INTEIRO,
+   incluindo o historico de viagens antigas (so esse pedaco ja pesa uns 300KB). Isso e o maior
+   consumo de trafego do Supabase (que estourou o limite do plano gratis).
+   Agora: a sincronizacao de rotina passa a baixar uma versao "leve" do quadro, SEM o historico
+   (view painel_leve, criada direto no banco -- ver script SQL separado). O historico so e
+   baixado de verdade quando alguem realmente abre a tela "Historico" no Painel, uma vez por
+   visita a tela. Nada muda visualmente; motoristas/entregas ativos continuam chegando na hora
+   certa, so o historico antigo que passa a ser sob-demanda.
+   Limite conhecido: um aparelho NOVO (primeira vez abrindo o Painel) comeca com o Historico
+   vazio ate clicar na aba Historico uma vez -- depois disso funciona normal, sempre. */
+(function(){
+  if (window.__PATCH_HISTORICO_SOB_DEMANDA) return;
+  window.__PATCH_HISTORICO_SOB_DEMANDA = "v1";
+
+  if (typeof window.sbLer !== "function") return;
+
+  var sbLerCompleto = window.sbLer;
+
+  window.sbLer = async function(c){
+    var u = c.url.replace(/\/+$/,"") + "/rest/v1/painel_leve?id=eq." + encodeURIComponent(c.quadro||"transload") + "&select=*";
+    var r = await fetch(u, { headers: sbHeaders(c) });
+    if(!r.ok) throw new Error("HTTP " + r.status + " ao ler (leve)");
+    var j = await r.json();
+    return Array.isArray(j) && j.length ? j[0] : null;
+  };
+
+  var historicoCarregadoNestaVisita = false;
+
+  async function carregarHistoricoSobDemanda(){
+    try{
+      var cfg = (typeof lerSync === "function") ? lerSync() : null;
+      if (!cfg || !cfg.url || !cfg.key) return;
+      var linha = await sbLerCompleto(cfg);
+      var remotoHist = (linha && linha.dados && linha.dados.historico) || [];
+      var arq = {};
+      remotoHist.concat(S.arquivo||[]).forEach(function(h){ if(h && h.id) arq[h.id] = h; });
+      S.arquivo = Object.keys(arq).map(function(k){ return arq[k]; })
+        .sort(function(a,b){ return (b.archivedAt||0)-(a.archivedAt||0); });
+    }catch(e){ /* sem internet ou banco fora do ar: mantem o que ja tinha localmente */ }
+  }
+
+  if (typeof window.render === "function") {
+    var _renderOriginal = window.render;
+    window.render = function(){
+      if (S.view === "historico" && !historicoCarregadoNestaVisita) {
+        historicoCarregadoNestaVisita = true;
+        carregarHistoricoSobDemanda().then(function(){
+          if (typeof window.render === "function") window.render();
+        });
+      } else if (S.view !== "historico") {
+        historicoCarregadoNestaVisita = false;
+      }
+      return _renderOriginal.apply(this, arguments);
+    };
+  }
+})();
+</script>
 </html>
