@@ -3887,4 +3887,22 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   setInterval(injetar, 3000);
 })();
 </script>
+<script>
+/* PATCH_SYNC_SEGURO v1 (21/08/2026) — evita que uma aba com dado velho na memória apague
+   correções feitas por outra aba/computador. Antes, enviarAoServidor() mandava a "foto" local
+   direto por cima da do servidor (o quadro inteiro é 1 linha só no Supabase, não mescla sozinho
+   lá). Agora, antes de qualquer envio, primeiro puxa o que tem no servidor e mescla com o que
+   está na tela (mesma lógica de recência do puxarDoServidor/mesclarQuadro) — só depois envia.
+   Não muda nada visualmente; só torna o salvamento mais seguro contra abas desatualizadas. */
+(function(){
+  if (typeof window.enviarAoServidor === "function" && !window.__PATCH_SYNC_SEGURO) {
+    var _enviarAoServidorOriginal = window.enviarAoServidor;
+    window.enviarAoServidor = async function(){
+      try { await window.puxarDoServidor(); } catch(e) { /* servidor fora do ar: manda como estava */ }
+      return _enviarAoServidorOriginal.apply(this, arguments);
+    };
+    window.__PATCH_SYNC_SEGURO = "v1";
+  }
+})();
+</script>
 </html>
