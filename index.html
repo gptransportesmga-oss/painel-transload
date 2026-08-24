@@ -1075,7 +1075,7 @@ if(d.tracking && d.tracking.posicao && rz.total > rz.feitas){ h += '<button clas
         if(e.destino) h += "<span>"+esc(e.destino)+"</span>";
         if(e.rua) h += '<span title="Usado pra bater com a rua do rastreio">'+esc(e.rua)+"</span>";
         if(e.notas && e.notas.length) h += '<span class="mono">NF '+esc(e.notas.join(", "))+"</span>";
-if(e._distKm!=null) h += '<span class="mono" title="Distância em linha reta até a posição atual do caminhão -- sugestão, não é rota real">≈'+Math.round(e._distKm)+' km</span>';
+if(e._distKm!=null) h += '<span class="mono" title="Distância em linha reta até a posição atual do caminhão -- sugestão, não é rota real, e não muda a ordem da lista">'+(e._rankDist?e._rankDist+"º mais perto · ":"")+'≈'+Math.round(e._distKm)+' km</span>';
         if(isHere) h += '<span class="badge-here">📍 no ponto</span>';
         else if(isNext) h += '<span class="badge-next">próxima</span>';
         h += "</div></div></div>";
@@ -4258,6 +4258,11 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       render(); return;
     }
 
+    // IMPORTANTE: NÃO reordena d.entregas -- o checkbox de cada entrega usa o índice do
+    // array (data-i) pra saber qual marcar. Reordenar o array troca o item que fica embaixo de
+    // cada checkbox entre um render e outro, o que pode fazer um "visto" cair na entrega errada
+    // (ou parecer que "voltou a marcar como não feita"). Por isso: só calcula e guarda a
+    // distância (pra mostrar "≈N km" e um número de ordem sugerida), sem mexer na posição.
     var pendentes = (d.entregas||[]).filter(function(e){ return !e.concluida; });
     for(var i=0;i<pendentes.length;i++){
       var e = pendentes[i];
@@ -4275,18 +4280,17 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     }
 
     var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
-    pendentes.sort(function(a,b){
+    var ordenadas = pendentes.slice().sort(function(a,b){
       if(a._distKm==null) return 1;
       if(b._distKm==null) return -1;
       return a._distKm - b._distKm;
     });
+    ordenadas.forEach(function(e, idx){ e._rankDist = e._distKm!=null ? (idx+1) : null; });
 
-    var concluidas = (d.entregas||[]).filter(function(e){ return e.concluida; });
-    d.entregas = concluidas.concat(pendentes);
     touch(d); save();
 
     S.cardMsg = { id: id, tipo: (semDist ? "err" : "ok"),
-      texto: "Ordem sugerida por distância aplicada (linha reta)." + (semDist ? " " + semDist + " sem endereço localizado." : "") };
+      texto: "Distância calculada (linha reta) -- a ordem da lista não muda, olhe o número/km em cada entrega." + (semDist ? " " + semDist + " sem endereço localizado." : "") };
     render();
     if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
   };
