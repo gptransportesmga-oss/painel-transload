@@ -4244,6 +4244,16 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
     var origem = await geocodificar(posLimpa + ", Brasil");
     if(!origem){
+      // o texto do rastreio às vezes vem com letra acentuada cortada (ex.: "CEILNDIA" em vez
+      // de "Ceilândia") e o nome da cidade não geocodifica -- tenta só a via + UF.
+      var ufM = posLimpa.match(/-\s*([A-Z]{2})\s*$/);
+      var viaParte = posLimpa.split(",")[0].trim();
+      if(viaParte){
+        await esperar(1100);
+        origem = await geocodificar(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
+      }
+    }
+    if(!origem){
       S.cardMsg = { id: id, tipo: "err", texto: "Não consegui localizar a posição do caminhão no mapa." };
       render(); return;
     }
