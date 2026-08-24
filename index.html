@@ -4263,6 +4263,12 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       var e = pendentes[i];
       var endereco = (e.rua ? e.rua+", " : "") + (e.destino||"") + ", Brasil";
       var p = await geocodificar(endereco);
+      if(!p && e.destino){
+        // endereço rural/completo não achou -- tenta só a cidade/UF, melhor uma distância
+        // aproximada da cidade do que nenhuma.
+        await esperar(1100);
+        p = await geocodificar(e.destino + ", Brasil");
+      }
       e._geo = p;
       e._distKm = p ? distanciaKm(origem, p) : null;
       if(i < pendentes.length-1) await esperar(1100);
