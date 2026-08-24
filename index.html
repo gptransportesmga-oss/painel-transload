@@ -1069,7 +1069,7 @@ if(d.tracking && d.tracking.posicao && rz.total > rz.feitas){ h += '<button clas
       d.entregas.forEach((e,i)=>{
         const isHere = (i===here) && !e.concluida;
         const isNext = (i===prox) && !e.concluida;
-        h += '<div class="erow'+(isHere?" here":(isNext?" next":""))+(d.status==="no_cliente" && e._distKm!=null && e._distKm<=1 && !e.concluida?" perto1":"")+'">';
+        h += '<div class="erow'+(isHere?" here":(isNext?" next":""))+((isHere || (d.status==="no_cliente" && e._distKm!=null && e._distKm<=1)) && !e.concluida?" perto1":"")+'">';
         h += '<input type="checkbox" data-act="tog" data-id="'+d.id+'" data-i="'+i+'"'+(e.concluida?" checked":"")+' />';
         h += '<div style="flex:1;min-width:0">';
         h += '<p class="ecli'+(e.concluida?" done":"")+'">'+esc(e.cliente)+"</p>";
