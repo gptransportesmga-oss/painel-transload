@@ -90,6 +90,8 @@
   .erow{display:flex;gap:7px;align-items:flex-start;padding:4px 6px;border-radius:5px;border:1px solid transparent}
   .erow.next{background:rgba(59,140,130,.10);border-color:rgba(59,140,130,.5)}
   .erow.here{background:#E8F5EC}
+.erow.perto1{animation:pisca1 1.4s ease-in-out infinite}
+@keyframes pisca1{0%,100%{background:rgba(124,111,165,.10);border-color:rgba(124,111,165,.4)}50%{background:rgba(124,111,165,.32);border-color:rgba(124,111,165,.9)}}
   .erow input{margin:2px 0 0;cursor:pointer}
   .ecli{font-size:11px;line-height:1.25;margin:0}
   .ecli.done{text-decoration:line-through;opacity:.55}
@@ -1067,7 +1069,7 @@ if(d.tracking && d.tracking.posicao && rz.total > rz.feitas){ h += '<button clas
       d.entregas.forEach((e,i)=>{
         const isHere = (i===here) && !e.concluida;
         const isNext = (i===prox) && !e.concluida;
-        h += '<div class="erow'+(isHere?" here":(isNext?" next":""))+'">';
+        h += '<div class="erow'+(isHere?" here":(isNext?" next":""))+(e._rankDist===1 && !e.concluida?" perto1":"")+'">';
         h += '<input type="checkbox" data-act="tog" data-id="'+d.id+'" data-i="'+i+'"'+(e.concluida?" checked":"")+' />';
         h += '<div style="flex:1;min-width:0">';
         h += '<p class="ecli'+(e.concluida?" done":"")+'">'+esc(e.cliente)+"</p>";
