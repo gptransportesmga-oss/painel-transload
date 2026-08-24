@@ -1077,7 +1077,7 @@ if(d.tracking && d.tracking.posicao && rz.total > rz.feitas){ h += '<button clas
         if(e.destino) h += "<span>"+esc(e.destino)+"</span>";
         if(e.rua) h += '<span title="Usado pra bater com a rua do rastreio">'+esc(e.rua)+"</span>";
         if(e.notas && e.notas.length) h += '<span class="mono">NF '+esc(e.notas.join(", "))+"</span>";
-if(e._distKm!=null) h += '<span class="mono" title="Distância em linha reta até a posição atual do caminhão -- sugestão, não é rota real, e não muda a ordem da lista">'+(e._rankDist?e._rankDist+"º mais perto · ":"")+'≈'+Math.round(e._distKm)+' km</span>';
+if(e._distKm!=null) h += '<span class="mono" title="Distância até a posição atual do caminhão (rota real quando disponível, senão linha reta) -- sugestão, não muda a ordem da lista">'+(e._rankDist?e._rankDist+"º mais perto · ":"")+'≈'+Math.round(e._distKm)+' km'+(e._rota?"":" (linha reta)")+'</span>';
         if(isHere) h += '<span class="badge-here">📍 no ponto</span>';
         else if(isNext) h += '<span class="badge-next">próxima</span>';
         h += "</div></div></div>";
@@ -4245,6 +4245,28 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
   }
 
+  var __proxRota = 0;
+  function reservarVezRota(){
+    var agora = Date.now();
+    var inicio = Math.max(agora, __proxRota);
+    __proxRota = inicio + 1100;
+    return inicio - agora;
+  }
+
+  async function distanciaRotaKm(origem, destino){
+    if(!origem || !destino) return null;
+    var espera = reservarVezRota();
+    if(espera > 0) await esperar(espera);
+    try{
+      var url = "https://router.project-osrm.org/route/v1/driving/" + origem.lon + "," + origem.lat + ";" + destino.lon + "," + destino.lat + "?overview=false";
+      var r = await fetch(url);
+      if(!r.ok) return null;
+      var j = await r.json();
+      if(j && j.code === "Ok" && j.routes && j.routes[0]) return j.routes[0].distance/1000;
+      return null;
+    }catch(e){ return null; }
+  }
+
   async function geocodificarOrigem(d){
     var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
     var origem = await geocodificar(posLimpa + ", Brasil");
@@ -4270,7 +4292,14 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       var p = await geocodificar(endereco);
       if(!p && e.destino) p = await geocodificar(e.destino + ", Brasil");
       e._geo = p;
-      e._distKm = p ? distanciaKm(origem, p) : null;
+      if(p){
+        var rota = await distanciaRotaKm(origem, p);
+        e._distKm = rota!=null ? rota : distanciaKm(origem, p);
+        e._rota = rota!=null;
+      } else {
+        e._distKm = null;
+        e._rota = false;
+      }
     }
 
     var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
