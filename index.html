@@ -4184,16 +4184,18 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 })();
 </script>
 <script>
-/* PATCH_DISTANCIA_ENTREGAS v1 (24/08/2026) -- sugestao de ordem das entregas pendentes pela
-   distancia em linha reta ate a posicao atual do caminhao. NAO mexe na contagem de horas por
-   cliente (que e amarrada ao nome do cliente, nao a posicao na lista) nem reordena entregas
-   ja concluidas -- so reordena as pendentes. Geocodifica pelo Nominatim/OpenStreetMap (gratis)
-   e guarda o resultado em cache no navegador (localStorage) pra nao bater na API toda hora.
-   Limitacao conhecida: linha reta, nao rota real -- e uma sugestao, o usuario pode reordenar
-   na mao editando as entregas se achar que ficou errado. */
+/* PATCH_DISTANCIA_ENTREGAS v2 (24/08/2026) -- v1 calculava a distancia so quando o usuario
+   clicava no botao. Pedido do dono: calcular sozinho a cada 10 min, sem precisar clicar.
+   v2 acrescenta um ciclo automatico (setInterval) que roda em segundo plano pra todo
+   caminhao com rastreio + entrega pendente, e tambem organiza a fila de chamadas ao
+   Nominatim num throttle unico (1 por segundo) pra nao estourar o limite gratuito da API
+   quando varios caminhoes/varias abas calculam ao mesmo tempo.
+   Continua valido o design da v1: NUNCA reordena d.entregas (o checkbox usa o indice do
+   array) e NUNCA mexe em concluida/tempos -- so calcula e guarda `_distKm`/`_rankDist` pra
+   exibir, sem afetar a contagem de horas nem o "entregue". */
 (function(){
-  if (window.__PATCH_DISTANCIA_ENTREGAS) return;
-  window.__PATCH_DISTANCIA_ENTREGAS = "v1";
+  if (window.__PATCH_DISTANCIA_ENTREGAS === "v2") return;
+  window.__PATCH_DISTANCIA_ENTREGAS = "v2";
 
   var GEO_CACHE_KEY = "painel-geo-cache-v1";
   function geoCacheLer(){
@@ -4203,11 +4205,23 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     try{ localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); }catch(e){}
   }
 
+  function esperar(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+
+  var proximoHorarioLivre = 0;
+  function reservarVez(){
+    var agora = Date.now();
+    var inicio = Math.max(agora, proximoHorarioLivre);
+    proximoHorarioLivre = inicio + 1100;
+    return inicio - agora;
+  }
+
   async function geocodificar(endereco){
     var chave = String(endereco||"").trim().toLowerCase();
     if(!chave) return null;
     var cache = geoCacheLer();
     if(Object.prototype.hasOwnProperty.call(cache, chave)) return cache[chave];
+    var espera = reservarVez();
+    if(espera > 0) await esperar(espera);
     try{
       var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" + encodeURIComponent(endereco);
       var r = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
@@ -4229,7 +4243,44 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
   }
 
-  function esperar(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  async function geocodificarOrigem(d){
+    var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
+    var origem = await geocodificar(posLimpa + ", Brasil");
+    if(!origem){
+      var ufM = posLimpa.match(/-\s*([A-Z]{2})\s*$/);
+      var viaParte = posLimpa.split(",")[0].trim();
+      if(viaParte) origem = await geocodificar(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
+    }
+    return origem;
+  }
+
+  async function calcularDistancias(d){
+    if(!d || !d.tracking || !d.tracking.posicao) return { feito:false, semDist:0 };
+    var pendentes = (d.entregas||[]).filter(function(e){ return !e.concluida; });
+    if(!pendentes.length) return { feito:false, semDist:0 };
+
+    var origem = await geocodificarOrigem(d);
+    if(!origem) return { feito:false, semDist:0 };
+
+    for(var i=0;i<pendentes.length;i++){
+      var e = pendentes[i];
+      var endereco = (e.rua ? e.rua+", " : "") + (e.destino||"") + ", Brasil";
+      var p = await geocodificar(endereco);
+      if(!p && e.destino) p = await geocodificar(e.destino + ", Brasil");
+      e._geo = p;
+      e._distKm = p ? distanciaKm(origem, p) : null;
+    }
+
+    var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
+    var ordenadas = pendentes.slice().sort(function(a,b){
+      if(a._distKm==null) return 1;
+      if(b._distKm==null) return -1;
+      return a._distKm - b._distKm;
+    });
+    ordenadas.forEach(function(e, idx){ e._rankDist = e._distKm!=null ? (idx+1) : null; });
+
+    return { feito:true, semDist:semDist };
+  }
 
   window.ordenarPorDistancia = async function(id){
     var d = (typeof driver === "function") ? driver(id) : null;
@@ -4241,59 +4292,43 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     S.cardMsg = { id: id, tipo: "ok", texto: "Calculando distâncias (linha reta)..." };
     render();
 
-    var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
-    var origem = await geocodificar(posLimpa + ", Brasil");
-    if(!origem){
-      // o texto do rastreio às vezes vem com letra acentuada cortada (ex.: "CEILNDIA" em vez
-      // de "Ceilândia") e o nome da cidade não geocodifica -- tenta só a via + UF.
-      var ufM = posLimpa.match(/-\s*([A-Z]{2})\s*$/);
-      var viaParte = posLimpa.split(",")[0].trim();
-      if(viaParte){
-        await esperar(1100);
-        origem = await geocodificar(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
-      }
-    }
-    if(!origem){
+    var r = await calcularDistancias(d);
+    if(!r.feito){
       S.cardMsg = { id: id, tipo: "err", texto: "Não consegui localizar a posição do caminhão no mapa." };
       render(); return;
     }
 
-    // IMPORTANTE: NÃO reordena d.entregas -- o checkbox de cada entrega usa o índice do
-    // array (data-i) pra saber qual marcar. Reordenar o array troca o item que fica embaixo de
-    // cada checkbox entre um render e outro, o que pode fazer um "visto" cair na entrega errada
-    // (ou parecer que "voltou a marcar como não feita"). Por isso: só calcula e guarda a
-    // distância (pra mostrar "≈N km" e um número de ordem sugerida), sem mexer na posição.
-    var pendentes = (d.entregas||[]).filter(function(e){ return !e.concluida; });
-    for(var i=0;i<pendentes.length;i++){
-      var e = pendentes[i];
-      var endereco = (e.rua ? e.rua+", " : "") + (e.destino||"") + ", Brasil";
-      var p = await geocodificar(endereco);
-      if(!p && e.destino){
-        // endereço rural/completo não achou -- tenta só a cidade/UF, melhor uma distância
-        // aproximada da cidade do que nenhuma.
-        await esperar(1100);
-        p = await geocodificar(e.destino + ", Brasil");
-      }
-      e._geo = p;
-      e._distKm = p ? distanciaKm(origem, p) : null;
-      if(i < pendentes.length-1) await esperar(1100);
-    }
-
-    var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
-    var ordenadas = pendentes.slice().sort(function(a,b){
-      if(a._distKm==null) return 1;
-      if(b._distKm==null) return -1;
-      return a._distKm - b._distKm;
-    });
-    ordenadas.forEach(function(e, idx){ e._rankDist = e._distKm!=null ? (idx+1) : null; });
-
     touch(d); save();
-
-    S.cardMsg = { id: id, tipo: (semDist ? "err" : "ok"),
-      texto: "Distância calculada (linha reta) -- a ordem da lista não muda, olhe o número/km em cada entrega." + (semDist ? " " + semDist + " sem endereço localizado." : "") };
+    S.cardMsg = { id: id, tipo: (r.semDist ? "err" : "ok"),
+      texto: "Distância calculada (linha reta) -- a ordem da lista não muda, olhe o número/km em cada entrega." + (r.semDist ? " " + r.semDist + " sem endereço localizado." : "") };
     render();
     if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
   };
+
+  var CICLO_MS = 10*60000;
+  async function cicloAutomaticoDistancia(){
+    if(!window.S || !Array.isArray(S.drivers)) return;
+    var candidatos = S.drivers.filter(function(d){
+      return d.tracking && d.tracking.posicao && d.status !== "finalizado" &&
+        (d.entregas||[]).some(function(e){ return !e.concluida; });
+    });
+    var mudou = false;
+    for(var i=0;i<candidatos.length;i++){
+      try{
+        var r = await calcularDistancias(candidatos[i]);
+        if(r.feito){ touch(candidatos[i]); mudou = true; }
+      }catch(e){ }
+    }
+    if(mudou){
+      save();
+      if(typeof render === "function") render();
+      if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
+    }
+  }
+  window.__cicloAutomaticoDistancia = cicloAutomaticoDistancia;
+  setInterval(function(){ cicloAutomaticoDistancia().catch(function(){}); }, CICLO_MS);
+  setTimeout(function(){ cicloAutomaticoDistancia().catch(function(){}); }, 20000);
 })();
 </script>
+
 </html>
