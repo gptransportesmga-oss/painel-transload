@@ -1060,6 +1060,7 @@ function cardHTML(d){
     h += '<button class="ttl" data-act="entTog" data-id="'+d.id+'" title="'+(aberto?"Minimizar":"Maximizar")+' entregas">';
     h += "<span>📦 Entregas ("+rz.feitas+"/"+rz.total+")</span></button>";
     h += '<button class="icobtn" data-act="entEdit" data-id="'+d.id+'" title="Editar/adicionar entregas">✏️</button>';
+if(d.tracking && d.tracking.posicao && rz.total > rz.feitas){ h += '<button class="icobtn" data-act="ordDist" data-id="'+d.id+'" title="Sugerir ordem das entregas pendentes por distância (linha reta até o caminhão -- não é rota real)">🧭</button>'; }
     h += '<button class="minbtn" data-act="entTog" data-id="'+d.id+'" title="'+(aberto?"Minimizar":"Maximizar")+' as entregas">'+(aberto?"−":"+")+"</button></div>";
     if(aberto){
       h += '<div class="entlist">';
@@ -1074,6 +1075,7 @@ function cardHTML(d){
         if(e.destino) h += "<span>"+esc(e.destino)+"</span>";
         if(e.rua) h += '<span title="Usado pra bater com a rua do rastreio">'+esc(e.rua)+"</span>";
         if(e.notas && e.notas.length) h += '<span class="mono">NF '+esc(e.notas.join(", "))+"</span>";
+if(e._distKm!=null) h += '<span class="mono" title="Distância em linha reta até a posição atual do caminhão -- sugestão, não é rota real">≈'+Math.round(e._distKm)+' km</span>';
         if(isHere) h += '<span class="badge-here">📍 no ponto</span>';
         else if(isNext) h += '<span class="badge-next">próxima</span>';
         h += "</div></div></div>";
@@ -1189,6 +1191,7 @@ document.addEventListener("click", (ev)=>{
     S.editTracking=null; touch(d); save(); checkAlerts(); render(); return;
   }
   if(act==="entTog" && d){ d.entAberto = (d.entAberto === false); save(); render(); return; }
+if(act==="ordDist" && d){ ordenarPorDistancia(d.id); return; }
   if(act==="entEdit"){ S.editEntregas=id; S.editTracking=null; render(); return; }
   if(act==="entCancel"){ S.editEntregas=null; render(); return; }
   if(act==="entSave" && d){
@@ -4177,6 +4180,98 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       }
     }catch(e){ /* checagem falhou (sem internet etc) -- segue enviando normal, nao trava o painel */ }
     return _enviarOriginal.apply(this, arguments);
+  };
+})();
+</script>
+<script>
+/* PATCH_DISTANCIA_ENTREGAS v1 (24/08/2026) -- sugestao de ordem das entregas pendentes pela
+   distancia em linha reta ate a posicao atual do caminhao. NAO mexe na contagem de horas por
+   cliente (que e amarrada ao nome do cliente, nao a posicao na lista) nem reordena entregas
+   ja concluidas -- so reordena as pendentes. Geocodifica pelo Nominatim/OpenStreetMap (gratis)
+   e guarda o resultado em cache no navegador (localStorage) pra nao bater na API toda hora.
+   Limitacao conhecida: linha reta, nao rota real -- e uma sugestao, o usuario pode reordenar
+   na mao editando as entregas se achar que ficou errado. */
+(function(){
+  if (window.__PATCH_DISTANCIA_ENTREGAS) return;
+  window.__PATCH_DISTANCIA_ENTREGAS = "v1";
+
+  var GEO_CACHE_KEY = "painel-geo-cache-v1";
+  function geoCacheLer(){
+    try{ return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}"); }catch(e){ return {}; }
+  }
+  function geoCacheSalvar(c){
+    try{ localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); }catch(e){}
+  }
+
+  async function geocodificar(endereco){
+    var chave = String(endereco||"").trim().toLowerCase();
+    if(!chave) return null;
+    var cache = geoCacheLer();
+    if(Object.prototype.hasOwnProperty.call(cache, chave)) return cache[chave];
+    try{
+      var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" + encodeURIComponent(endereco);
+      var r = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+      if(!r.ok) return null;
+      var j = await r.json();
+      var p = (j && j[0]) ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+      cache[chave] = p;
+      geoCacheSalvar(cache);
+      return p;
+    }catch(e){ return null; }
+  }
+
+  function distanciaKm(a, b){
+    if(!a || !b) return null;
+    var R = 6371;
+    var dLat = (b.lat-a.lat) * Math.PI/180;
+    var dLon = (b.lon-a.lon) * Math.PI/180;
+    var s = Math.pow(Math.sin(dLat/2),2) + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.pow(Math.sin(dLon/2),2);
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+  }
+
+  function esperar(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+
+  window.ordenarPorDistancia = async function(id){
+    var d = (typeof driver === "function") ? driver(id) : null;
+    if(!d) return;
+    if(!d.tracking || !d.tracking.posicao){
+      S.cardMsg = { id: id, tipo: "err", texto: "Sem rastreio -- não dá pra calcular distância." };
+      render(); return;
+    }
+    S.cardMsg = { id: id, tipo: "ok", texto: "Calculando distâncias (linha reta)..." };
+    render();
+
+    var origem = await geocodificar(d.tracking.posicao);
+    if(!origem){
+      S.cardMsg = { id: id, tipo: "err", texto: "Não consegui localizar a posição do caminhão no mapa." };
+      render(); return;
+    }
+
+    var pendentes = (d.entregas||[]).filter(function(e){ return !e.concluida; });
+    for(var i=0;i<pendentes.length;i++){
+      var e = pendentes[i];
+      var endereco = (e.rua ? e.rua+", " : "") + (e.destino||"") + ", Brasil";
+      var p = await geocodificar(endereco);
+      e._geo = p;
+      e._distKm = p ? distanciaKm(origem, p) : null;
+      if(i < pendentes.length-1) await esperar(1100);
+    }
+
+    var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
+    pendentes.sort(function(a,b){
+      if(a._distKm==null) return 1;
+      if(b._distKm==null) return -1;
+      return a._distKm - b._distKm;
+    });
+
+    var concluidas = (d.entregas||[]).filter(function(e){ return e.concluida; });
+    d.entregas = concluidas.concat(pendentes);
+    touch(d); save();
+
+    S.cardMsg = { id: id, tipo: (semDist ? "err" : "ok"),
+      texto: "Ordem sugerida por distância aplicada (linha reta)." + (semDist ? " " + semDist + " sem endereço localizado." : "") };
+    render();
+    if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
   };
 })();
 </script>
