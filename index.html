@@ -4241,7 +4241,8 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     S.cardMsg = { id: id, tipo: "ok", texto: "Calculando distâncias (linha reta)..." };
     render();
 
-    var origem = await geocodificar(d.tracking.posicao);
+    var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
+    var origem = await geocodificar(posLimpa + ", Brasil");
     if(!origem){
       S.cardMsg = { id: id, tipo: "err", texto: "Não consegui localizar a posição do caminhão no mapa." };
       render(); return;
