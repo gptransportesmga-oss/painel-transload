@@ -3140,6 +3140,8 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     }
   }
 
+  window.__lerArquivoAnexo = lerArquivo;
+
   function forcarReinjetar(driverId){
     document.querySelectorAll(".erow[data-anexoinj]").forEach(function(row){
       var chk = row.querySelector('input[data-act="tog"]');
@@ -3152,6 +3154,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     var d = (typeof driver === "function") ? driver(driverId) : (S.drivers||[]).concat(S.arquivo||[]).find(function(x){return x.id===driverId;});
     if(!d) return;
     d.anexosEntrega = d.anexosEntrega || {};
+    window.__anexoAtual = {driverId: driverId, key: key, d: d};
     var old = document.getElementById("__anexoModal");
     if(old) old.remove();
     var wrap = document.createElement("div");
@@ -3274,6 +3277,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     });
   }
   window.injetarAnexos = injetarAnexos;
+  window.__abrirAnexosGlobal = abrirAnexos;
 
   var origRender = window.render;
   if (typeof origRender === "function"){
@@ -4372,6 +4376,52 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     __renderOriginal();
     window.scrollTo(__sx, __sy);
   };
+})();
+</script>
+
+<script>
+(function(){
+  if(window.__PATCH_ANEXO_PASTE) return;
+  window.__PATCH_ANEXO_PASTE = "v1";
+  document.addEventListener("paste", function(ev){
+    var modal = document.getElementById("__anexoModal");
+    if(!modal) return;
+    var ctx = window.__anexoAtual;
+    if(!ctx || !ctx.d) return;
+    var items = (ev.clipboardData && ev.clipboardData.items) || [];
+    for(var i=0;i<items.length;i++){
+      var it = items[i];
+      if(it.kind === "file" && it.type && it.type.indexOf("image/") === 0){
+        ev.preventDefault();
+        var file = it.getAsFile();
+        if(typeof window.__lerArquivoAnexo === "function"){
+          window.__lerArquivoAnexo(file, function(item){
+            if(!item) return;
+            ctx.d.anexosEntrega[ctx.key] = ctx.d.anexosEntrega[ctx.key] || [];
+            ctx.d.anexosEntrega[ctx.key].push(item);
+            if(typeof touch === "function") touch(ctx.d);
+            if(typeof save === "function") save();
+            try{ if(typeof marcarAlteracao === "function") marcarAlteracao(); }catch(e){}
+            if(typeof window.__abrirAnexosGlobal === "function") window.__abrirAnexosGlobal(ctx.driverId, ctx.key);
+          });
+        }
+        break;
+      }
+    }
+  });
+  var mo = new MutationObserver(function(){
+    var modal = document.getElementById("__anexoModal");
+    if(!modal || modal.getAttribute("data-dica")) return;
+    var inp2 = modal.querySelector("input[type=file]");
+    if(!inp2) return;
+    modal.setAttribute("data-dica","1");
+    var dica = document.createElement("div");
+    dica.textContent = "Dica: com o modal aberto, cole uma imagem copiada (Ctrl+V) pra anexar direto.";
+    dica.style.cssText = "font-size:11px;opacity:.7;margin-top:6px;text-align:center";
+    var box2 = inp2.parentElement;
+    if(box2) box2.insertBefore(dica, inp2);
+  });
+  mo.observe(document.body, {childList:true, subtree:true});
 })();
 </script>
 </html>
