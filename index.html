@@ -4362,4 +4362,16 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 })();
 </script>
 
+<script>
+(function(){
+  if(window.__PATCH_RENDER_SCROLL_FIX) return;
+  window.__PATCH_RENDER_SCROLL_FIX = "v1";
+  var __renderOriginal = render;
+  render = function(){
+    var __sx = window.scrollX, __sy = window.scrollY;
+    __renderOriginal();
+    window.scrollTo(__sx, __sy);
+  };
+})();
+</script>
 </html>
