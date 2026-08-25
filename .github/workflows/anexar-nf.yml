@@ -43,10 +43,14 @@ jobs:
         run: |
           git config user.name "robo-anexar-nf"
           git config user.email "actions@users.noreply.github.com"
-          git add fila-anexos/
-          if ! git diff --cached --quiet; then
-            git commit -m "robo-anexar-nf: fila processada [skip ci]"
-            git push
+          if [ -d fila-anexos ]; then
+            git add fila-anexos/
+            if ! git diff --cached --quiet; then
+              git commit -m "robo-anexar-nf: fila processada [skip ci]"
+              git push
+            else
+              echo "Nada para commitar."
+            fi
           else
-            echo "Nada para commitar."
+            echo "Pasta fila-anexos/ nao existe neste commit. Nada a fazer."
           fi
