@@ -4314,6 +4314,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     });
     ordenadas.forEach(function(e, idx){ e._rankDist = e._distKm!=null ? (idx+1) : null; });
 
+    d._distCalcPos = d.tracking.posicao;
     return { feito:true, semDist:semDist };
   }
 
@@ -4340,11 +4341,12 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
   };
 
-  var CICLO_MS = 10*60000;
+  var CICLO_MS = 30000;
   async function cicloAutomaticoDistancia(){
     if(!window.S || !Array.isArray(S.drivers)) return;
     var candidatos = S.drivers.filter(function(d){
       return d.tracking && d.tracking.posicao && d.status !== "finalizado" &&
+        d.tracking.posicao !== d._distCalcPos &&
         (d.entregas||[]).some(function(e){ return !e.concluida; });
     });
     var mudou = false;
