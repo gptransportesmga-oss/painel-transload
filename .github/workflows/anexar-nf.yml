@@ -1,0 +1,52 @@
+name: Anexar NF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'fila-anexos/pendentes/**'
+  workflow_dispatch:
+    inputs:
+      modo_seco:
+        description: 'Modo seco (nao grava, so simula)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: anexar-nf
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  anexar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Anexar notas pendentes
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MODO_SECO: ${{ github.event.inputs.modo_seco }}
+        run: node scripts/anexar-nf.js
+
+      - name: Commitar fila processada
+        run: |
+          git config user.name "robo-anexar-nf"
+          git config user.email "actions@users.noreply.github.com"
+          git add fila-anexos/
+          if ! git diff --cached --quiet; then
+            git commit -m "robo-anexar-nf: fila processada [skip ci]"
+            git push
+          else
+            echo "Nada para commitar."
+          fi
