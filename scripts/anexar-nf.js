@@ -58,6 +58,13 @@ async function lerLinha() {
 // Grava com CAS (compare-and-swap) igual ao robo de rastreio: le, muta, tenta
 // gravar condicionado ao carimbo lido; se alguem gravou no meio do caminho,
 // re-le e tenta de novo. Evita apagar uma edicao humana concorrente.
+//
+// FIX (25/08/2026): o PATCH precisa avancar o proprio atualizado_em. Sem isso,
+// a linha fica com o MESMO carimbo depois da nossa gravacao, entao um outro
+// escritor concorrente (ex.: robo-rastreio-nuvem, que roda a cada 30s) que
+// tenha lido os dados ANTES da gente ainda casa no "eq.<carimbo antigo>" e
+// sobrescreve silenciosamente o que acabamos de gravar -- sem nenhum "Conflito
+// de gravacao" aparecer nos dois lados, porque o portao do CAS nunca andou.
 async function gravarComCAS(mutar, tentativas) {
   tentativas = tentativas || 5;
   for (let i = 0; i < tentativas; i++) {
@@ -75,10 +82,11 @@ async function gravarComCAS(mutar, tentativas) {
       encodeURIComponent(QUADRO) +
       '&atualizado_em=eq.' +
       encodeURIComponent(linha.atualizado_em);
+    const novoCarimbo = new Date().toISOString();
     const r = await fetch(url, {
       method: 'PATCH',
       headers: sbHeaders({ Prefer: 'return=representation' }),
-      body: JSON.stringify({ dados: dados, por: 'robo-anexar-nf' }),
+      body: JSON.stringify({ dados: dados, por: 'robo-anexar-nf', atualizado_em: novoCarimbo }),
     });
     if (!r.ok) throw new Error('PATCH falhou: ' + r.status + ' ' + (await r.text()));
     const arr = await r.json();
