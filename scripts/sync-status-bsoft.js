@@ -1,4 +1,3 @@
-   #!/usr/bin/env node
 // robo-sync-status-bsoft: le itens de fila-status/pendentes/*.json e aplica cada
 // um nos campos de status do motorista (bsoftAberto/mdfe/semNf/entregas) direto
 // no Supabase, sem depender de escrita via navegador (bloqueada pelo classificador
