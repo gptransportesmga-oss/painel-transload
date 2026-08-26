@@ -4461,5 +4461,42 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     return resultado;
   };
 })();
+</script><script>
+/* PATCH_ENTREGA_AUTO_FIX v1 (26/08/2026) — corrige o "visto verde" que não batia mesmo com o
+   caminhão ficando 60+ minutos no cliente. Causa: processarEntregas() só conferia o tempo
+   parado no instante em que o caminhão "saía" do raio do cliente, e um soluço passageiro de
+   GPS/rastreador antes de completar 60 min apagava o horário de chegada e reiniciava a conta
+   do zero. Ver claude/pendencias-e-descobertas.md para o diagnóstico completo. */
+(function(){
+  if(typeof window.processarEntregas !== "function") return;
+  window.processarEntregas = function(){
+    var agora = Date.now(); var eventos = [];
+    (S.drivers||[]).forEach(function(d){
+      var t = d.tracking || {};
+      if(!t.trackedAt) return;
+      var ref  = t.referencia || t.posicao || "";
+      var dist = window.distanciaRefMetros ? window.distanciaRefMetros(ref) : null;
+      var vel  = Number(t.velocidade || 0);
+      var dentro = (dist !== null && dist <= (window.RAIO_CLIENTE_M||200)) && vel <= (window.VEL_PARADO_KMH||5);
+      var idx = window.casarEntrega(ref, d.entregas);
+      if(dentro && idx >= 0){
+        var e = d.entregas[idx];
+        if(!e._chegouEm){ e._chegouEm = Number(t.trackedAt); eventos.push(d.placa+" chegou em "+e.cliente); }
+      }
+      (d.entregas||[]).forEach(function(e){
+        if(e.concluida || !e._chegouEm) return;
+        var parado = (agora - e._chegouEm)/60000;
+        if(parado >= window.ENTREGA_MIN_MINUTOS && window.emHorarioUtil(e._chegouEm)){
+          e.concluida = true; e._auto = true; e._concluidaEm = agora;
+          eventos.push(d.placa+" entrega concluida: "+e.cliente);
+        }
+      });
+      var ents = d.entregas || [];
+      d._entregasOk = !!(ents.length && ents.every(function(e){ return e.concluida; }));
+    });
+    return eventos;
+  };
+  window.__PATCH_ENTREGA_AUTO_FIX = "v1";
+})();
 </script>
 </html>
