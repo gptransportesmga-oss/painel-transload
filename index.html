@@ -4026,6 +4026,41 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   window.abrirSessoes = function(){
     var lista = Object.keys(S.sessoes||{}).map(function(id){
       var o = Object.assign({id:id}, S.sessoes[id]); return o;
+      <script>
+(function(){
+  if (window.__PATCH_SEM_AUTOCRIACAO_RASTREIO) return;
+  window.__PATCH_SEM_AUTOCRIACAO_RASTREIO = "v1";
+
+  var origSincronizarApi = sincronizarApi;
+  sincronizarApi = async function(...args){
+    var placasAntes = new Set(S.drivers.map(function(d){ return normalizePlaca(d.placa); }));
+    var historicoPlacas = new Set(S.arquivo.map(function(d){ return normalizePlaca(d.placa); }));
+
+    var resultado = await origSincronizarApi.apply(this, args);
+
+    var removidos = 0;
+    for (var i = S.drivers.length - 1; i >= 0; i--) {
+      var d = S.drivers[i];
+      var pn = normalizePlaca(d.placa);
+      var eraNova = !placasAntes.has(pn) && !historicoPlacas.has(pn);
+      var semConfirmacao = !d.mdfe && !d.bsoftAberto && (!d.entregas || !d.entregas.length);
+      var criadoSoPeloRastreio = (d.obs || "").includes("criado automatico pelo rastreio");
+      if (eraNova && semConfirmacao && criadoSoPeloRastreio) {
+        S.drivers.splice(i, 1);
+        removidos++;
+      }
+    }
+
+    if (removidos > 0) {
+      save(); render();
+      console.log("[PATCH_SEM_AUTOCRIACAO_RASTREIO] removida(s) " + removidos +
+        " placa(s) criada(s) só pelo rastreio, sem confirmação de carregamento.");
+    }
+
+    return resultado;
+  };
+})();
+</script>
     });
     lista.sort(function(a,b){ return (b.atualizadoEm||0)-(a.atualizadoEm||0); });
     var meu = meuSessionId();
