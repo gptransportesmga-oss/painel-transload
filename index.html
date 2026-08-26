@@ -4498,5 +4498,133 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   };
   window.__PATCH_ENTREGA_AUTO_FIX = "v1";
 })();
+</script><script>
+/* ====================== PATCH_GEOCODIFICACAO_ORIGEM v1 (26/08/2026) ======================
+   Corrige o botão 🧭 "sugerir ordem por distância": a função original que geocodifica a
+   posição do caminhão tinha uma segunda tentativa que descartava a CIDADE e mantinha só a
+   rua + UF (ex.: "Avenida Doutor Ezuel Portes, PR, Brasil" -- sem "Cascavel"), o que quase
+   sempre falha no OpenStreetMap/Nominatim. Esta versão substitui inteiramente o clique do
+   botão por uma cadeia de tentativas melhor: (1) endereço completo, (2) cidade + UF (a que
+   faltava, mantendo a cidade e descartando a rua), (3) rua + UF (a antiga, só como último
+   recurso). Usa o MESMO cache de geocodificação já salvo no navegador, então buscas que já
+   deram certo antes continuam valendo. */
+(function(){
+  var GEO_CACHE_KEY = "painel-geo-cache-v1";
+  var proximoHorarioLivreFix = 0;
+
+  function geoCacheLerFix(){
+    try{ return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}"); }catch(e){ return {}; }
+  }
+  function geoCacheSalvarFix(c){
+    try{ localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); }catch(e){}
+  }
+  function esperarFix(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  function reservarVezFix(){
+    var agora = Date.now();
+    var inicio = Math.max(agora, proximoHorarioLivreFix);
+    proximoHorarioLivreFix = inicio + 1100;
+    return inicio - agora;
+  }
+  async function geocodificarFix(endereco){
+    var chave = String(endereco||"").trim().toLowerCase();
+    if(!chave) return null;
+    var cache = geoCacheLerFix();
+    if(Object.prototype.hasOwnProperty.call(cache, chave)) return cache[chave];
+    var espera = reservarVezFix();
+    if(espera > 0) await esperarFix(espera);
+    try{
+      var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" + encodeURIComponent(endereco);
+      var r = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+      if(!r.ok) return null;
+      var j = await r.json();
+      var p = (j && j[0]) ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+      cache[chave] = p;
+      geoCacheSalvarFix(cache);
+      return p;
+    }catch(e){ return null; }
+  }
+  async function geocodificarOrigemFix(d){
+    var posLimpa = String(d.tracking.posicao||"").replace(/^\s*Prx\.?\s+/i, "").trim();
+    var origem = await geocodificarFix(posLimpa + ", Brasil");
+    if(!origem){
+      var partes = posLimpa.split(",");
+      var cidadeUf = partes.length > 1 ? partes[partes.length-1].trim() : "";
+      if(cidadeUf) origem = await geocodificarFix(cidadeUf + ", Brasil");
+    }
+    if(!origem){
+      var ufM = posLimpa.match(/-\s*([A-Z]{2})\s*$/);
+      var viaParte = posLimpa.split(",")[0].trim();
+      if(viaParte) origem = await geocodificarFix(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
+    }
+    return origem;
+  }
+  function distanciaKmFix(a, b){
+    if(!a || !b) return null;
+    var R = 6371;
+    var dLat = (b.lat-a.lat) * Math.PI/180;
+    var dLon = (b.lon-a.lon) * Math.PI/180;
+    var s = Math.pow(Math.sin(dLat/2),2) + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.pow(Math.sin(dLon/2),2);
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+  }
+  async function calcularDistanciasFix(d){
+    if(!d || !d.tracking || !d.tracking.posicao) return { feito:false, semDist:0 };
+    var pendentes = (d.entregas||[]).filter(function(e){ return !e.concluida; });
+    if(!pendentes.length) return { feito:false, semDist:0 };
+
+    var origem = await geocodificarOrigemFix(d);
+    if(!origem) return { feito:false, semDist:0 };
+
+    for(var i=0;i<pendentes.length;i++){
+      var e = pendentes[i];
+      var endereco = (e.rua ? e.rua+", " : "") + (e.destino||"") + ", Brasil";
+      var p = await geocodificarFix(endereco);
+      if(!p && e.destino) p = await geocodificarFix(e.destino + ", Brasil");
+      e._geo = p;
+      if(p){
+        e._distKm = distanciaKmFix(origem, p);
+        e._rota = false;
+      } else {
+        e._distKm = null;
+        e._rota = false;
+      }
+    }
+
+    var semDist = pendentes.filter(function(e){ return e._distKm==null; }).length;
+    var ordenadas = pendentes.slice().sort(function(a,b){
+      if(a._distKm==null) return 1;
+      if(b._distKm==null) return -1;
+      return a._distKm - b._distKm;
+    });
+    ordenadas.forEach(function(e, idx){ e._rankDist = e._distKm!=null ? (idx+1) : null; });
+
+    d._distCalcPos = d.tracking.posicao;
+    return { feito:true, semDist:semDist };
+  }
+
+  window.ordenarPorDistancia = async function(id){
+    var d = (typeof driver === "function") ? driver(id) : null;
+    if(!d) return;
+    if(!d.tracking || !d.tracking.posicao){
+      S.cardMsg = { id: id, tipo: "err", texto: "Sem rastreiro -- não dá pra calcular distância." };
+      render(); return;
+    }
+    S.cardMsg = { id: id, tipo: "ok", texto: "Calculando distâncias (linha reta)..." };
+    render();
+
+    var r = await calcularDistanciasFix(d);
+    if(!r.feito){
+      S.cardMsg = { id: id, tipo: "err", texto: "Não consegui localizar a posição do caminhão no mapa." };
+      render(); return;
+    }
+
+    touch(d); save();
+    S.cardMsg = { id: id, tipo: (r.semDist ? "err" : "ok"),
+      texto: "Distância calculada (linha reta) -- a ordem da lista não muda, olhe o número/km em cada entrega." + (r.semDist ? " " + r.semDist + " sem endereço localizado." : "") };
+    render();
+    if(typeof enviarAoServidor === "function") enviarAoServidor().catch(function(){});
+  };
+
+  window.__PATCH_GEOCODIFICACAO_ORIGEM = "v1";
+})();
 </script>
 </html>
