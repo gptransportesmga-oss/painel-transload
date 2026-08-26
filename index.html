@@ -4629,4 +4629,89 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   window.__PATCH_GEOCODIFICACAO_ORIGEM = "v1";
 })();
 </script>
+<script>
+/* PATCH_WHATSAPP v1 - pedido do dono, 26/08/2026: icone de WhatsApp no topo do card pra
+   chamar/ligar pro motorista ou mandar a nota fiscal direto pelo WhatsApp Web, sem digitar
+   o numero na mao toda vez. Abre https://wa.me/<numero> (link oficial de "clique pra
+   conversar" do WhatsApp) numa aba nova - so abre a conversa, anexar arquivo continua
+   manual (o link nao permite anexar nada sozinho, isso o WhatsApp nao libera por link).
+   O numero fica em d.telefone (sincroniza pelo Supabase junto com o resto do motorista,
+   mesmo mecanismo do d.anexosEntrega - nao precisa de wrapper em estadoLocal/
+   puxarDoServidor). Clique normal abre a conversa (ou pede o numero se ainda nao tiver);
+   clique com botao direito edita o numero a qualquer momento. Para desfazer, apague este
+   bloco. */
+(function(){
+  if (window.__PATCH_WHATSAPP) return;
+  if (typeof render !== "function" || typeof save !== "function") return;
+  window.__PATCH_WHATSAPP = "v1";
+
+  function acharDriver(id){
+    return (S.drivers||[]).find(function(x){ return x.id===id; });
+  }
+
+  function soDigitos(s){ return String(s||"").replace(/\D/g,""); }
+
+  function linkWa(tel){
+    var d = soDigitos(tel);
+    if(!d) return null;
+    if(d.length <= 11) d = "55" + d;
+    return "https://wa.me/" + d;
+  }
+
+  function pedirTelefone(d){
+    var atual = d.telefone || "";
+    var novo = prompt("Telefone/WhatsApp de " + (d.motorista||d.placa) + " (com DDD, ex: 44999998888):", atual);
+    if(novo === null) return;
+    novo = novo.trim();
+    d.telefone = novo;
+    d.updatedAt = Date.now();
+    save();
+    render();
+  }
+
+  function onClick(id, ev){
+    ev.stopPropagation();
+    var d = acharDriver(id);
+    if(!d) return;
+    var link = linkWa(d.telefone);
+    if(!link){ pedirTelefone(d); return; }
+    window.open(link, "_blank", "noopener");
+  }
+
+  function onEditar(id, ev){
+    ev.stopPropagation();
+    ev.preventDefault();
+    var d = acharDriver(id);
+    if(d) pedirTelefone(d);
+  }
+
+  function injetar(){
+    document.querySelectorAll(".card").forEach(function(card){
+      var delBtn = card.querySelector('.icobtn[data-act="del"]');
+      var id = delBtn ? delBtn.getAttribute("data-id") : null;
+      if(!id) return;
+      if(card.querySelector(".btnWa")) return;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "icobtn btnWa";
+      btn.title = "Chamar no WhatsApp (botão direito edita o número)";
+      btn.style.cssText = "opacity:.85;font-size:12px";
+      btn.textContent = "📲";
+      btn.onclick = function(ev){ onClick(id, ev); };
+      btn.oncontextmenu = function(ev){ onEditar(id, ev); };
+      var grupo = delBtn.parentNode.querySelector(".grupoTopoBtns");
+      if(grupo){ grupo.insertBefore(btn, delBtn); }
+      else { delBtn.parentNode.insertBefore(btn, delBtn); }
+    });
+  }
+
+  var origRender = window.render;
+  window.render = function(){
+    var r = origRender.apply(this, arguments);
+    setTimeout(injetar, 20);
+    return r;
+  };
+  setInterval(injetar, 3000);
+})();
+</script>
 </html>
