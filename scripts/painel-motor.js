@@ -365,17 +365,29 @@ function sbHeaders(extra) {
   );
 }
 
-async function lerLinha() {
-  console.log('robo-painel-motor: lendo quadro atual no Supabase...');
-  const url = SUPABASE_URL + '/rest/v1/painel?id=eq.' + encodeURIComponent(QUADRO) + '&select=dados,atualizado_em';
-  const r = await fetch(url, { headers: sbHeaders(), signal: AbortSignal.timeout(20000) });
-  if (!r.ok) throw new Error('GET falhou: ' + r.status + ' ' + (await r.text()));
-  const j = await r.json();
-  if (!j[0]) throw new Error('Linha "' + QUADRO + '" nao existe no Supabase.');
-  console.log('robo-painel-motor: quadro lido com sucesso.');
-  return j[0];
+async function lerLinhaUmaVez() {
+    const url = SUPABASE_URL + '/rest/v1/painel?id=eq.' + encodeURIComponent(QUADRO) + '&select=dados,atualizado_em';
+    const r = await fetch(url, { headers: sbHeaders(), signal: AbortSignal.timeout(60000) });
+    if (!r.ok) throw new Error('GET falhou: ' + r.status + ' ' + (await r.text()));
+    const j = await r.json();
+    if (!j[0]) throw new Error('Linha "' + QUADRO + '" nao existe no Supabase.');
+    return j[0];
 }
 
+async function lerLinha() {
+    console.log('robo-painel-motor: lendo quadro atual no Supabase...');
+    try {
+          const linha = await lerLinhaUmaVez();
+          console.log('robo-painel-motor: quadro lido com sucesso.');
+          return linha;
+    } catch (e) {
+          console.log('robo-painel-motor: primeira tentativa de leitura falhou (' + (e && e.message ? e.message : e) + '), tentando de novo em 5s...');
+          await new Promise((r) => setTimeout(r, 5000));
+          const linha = await lerLinhaUmaVez();
+          console.log('robo-painel-motor: quadro lido com sucesso (2a tentativa).');
+          return linha;
+    }
+}
 async function gravarComCAS(mutar, tentativas) {
   tentativas = tentativas || 5;
   for (let i = 0; i < tentativas; i++) {
@@ -396,7 +408,7 @@ async function gravarComCAS(mutar, tentativas) {
       method: 'PATCH',
       headers: sbHeaders({ Prefer: 'return=representation' }),
       body: JSON.stringify({ dados, por: 'robo-painel-motor', atualizado_em: novoCarimbo }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(60000),
     });
     if (!r.ok) throw new Error('PATCH falhou: ' + r.status + ' ' + (await r.text()));
     const arr = await r.json();
