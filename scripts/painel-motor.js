@@ -548,20 +548,19 @@ function rodarMotor(dados, mapeados) {
     }
   });
 
-  // 6) arquivar finalizado ha 5+ min (usa updatedAt como marca de "desde quando")
+  // 6) apagar finalizado ha 5+ min (pedido do dono 27/08/2026: BSoft ja guarda a NF/viagem,
+  // entao o Painel nao precisa mais reter nada depois de finalizar - so remove do quadro
+  // ativo, nao move mais para o historico. dados.fotos e qualquer contato nao sao tocados.)
   const permanecem = [];
-  const novosArquivados = [];
   drivers.forEach((d) => {
     if (d.status === 'finalizado' && d.updatedAt && (agora - d.updatedAt) >= ARQUIVA_APOS_MS) {
-      novosArquivados.push(Object.assign({}, d, { finalStatus: 'finalizado', motivo: 'Finalizada', archivedAt: agora }));
-      eventos.push(d.placa + ': arquivada (finalizada ha 5+ min)');
+      eventos.push(d.placa + ': removida do painel (finalizada ha 5+ min, dados ja estao no BSoft)');
     } else {
       permanecem.push(d);
     }
   });
 
   dados.motoristas = permanecem;
-  dados.historico = novosArquivados.concat(arquivo);
 
   return eventos;
 }
