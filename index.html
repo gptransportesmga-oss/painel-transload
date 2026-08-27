@@ -1529,7 +1529,7 @@ function ligarSync(){
   pararSync();
   if(!syncLigado()) return;
   puxarDoServidor().catch(()=>{});
-  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 10000);
+  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 60000);
 }
 function pararSync(){ if(syncTimer){ clearInterval(syncTimer); syncTimer = null; } }
 const API_BASE = "https://ca2soft.com.br/itransrisco";
