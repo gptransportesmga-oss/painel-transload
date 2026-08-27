@@ -69,12 +69,12 @@ const API_BASE = 'https://ca2soft.com.br/itransrisco';
 function normalizePlaca(p) { return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 
 function slug(s) {
-  return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 function norm(s) {
-  return (s || '').toString().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return (s || '').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -308,7 +308,10 @@ function listaDaResposta(result) {
 async function apiPost(rota, corpo, token) {
   const h = { 'Content-Type': 'application/json' };
   if (token) h.Authorization = 'Bearer ' + token;
-  const r = await fetch(API_BASE + rota, { method: 'POST', headers: h, body: JSON.stringify(corpo || {}) });
+  const r = await fetch(API_BASE + rota, {
+    method: 'POST', headers: h, body: JSON.stringify(corpo || {}),
+    signal: AbortSignal.timeout(20000),
+  });
   let j = null;
   try { j = await r.json(); } catch (e) { /* resposta sem corpo JSON */ }
   return { http: r.status, body: j };
@@ -363,11 +366,13 @@ function sbHeaders(extra) {
 }
 
 async function lerLinha() {
+  console.log('robo-painel-motor: lendo quadro atual no Supabase...');
   const url = SUPABASE_URL + '/rest/v1/painel?id=eq.' + encodeURIComponent(QUADRO) + '&select=dados,atualizado_em';
-  const r = await fetch(url, { headers: sbHeaders() });
+  const r = await fetch(url, { headers: sbHeaders(), signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error('GET falhou: ' + r.status + ' ' + (await r.text()));
   const j = await r.json();
   if (!j[0]) throw new Error('Linha "' + QUADRO + '" nao existe no Supabase.');
+  console.log('robo-painel-motor: quadro lido com sucesso.');
   return j[0];
 }
 
@@ -386,10 +391,12 @@ async function gravarComCAS(mutar, tentativas) {
     const url = SUPABASE_URL + '/rest/v1/painel?id=eq.' + encodeURIComponent(QUADRO) +
       '&atualizado_em=eq.' + encodeURIComponent(linha.atualizado_em);
     const novoCarimbo = new Date().toISOString();
+    console.log('robo-painel-motor: gravando no Supabase...');
     const r = await fetch(url, {
       method: 'PATCH',
       headers: sbHeaders({ Prefer: 'return=representation' }),
       body: JSON.stringify({ dados, por: 'robo-painel-motor', atualizado_em: novoCarimbo }),
+      signal: AbortSignal.timeout(20000),
     });
     if (!r.ok) throw new Error('PATCH falhou: ' + r.status + ' ' + (await r.text()));
     const arr = await r.json();
