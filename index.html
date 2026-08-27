@@ -4715,3 +4715,37 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 })();
 </script>
 </html>
+<script>
+/* PATCH_EGRESS_LEVE v1 (27/08/2026) — antes de baixar o quadro inteiro do Supabase,
+   pergunta só o carimbo de hora (poucos bytes) e só baixa tudo se mudou de verdade.
+   Reduz o consumo de Egress do plano gratuito. Reversível: apagar este bloco inteiro. */
+(function(){
+  var _puxarOriginalEgress = window.puxarDoServidor;
+  var _carimboVistoEgress = 0;
+
+  async function _lerCarimboEgress(c){
+    var u = c.url.replace(/\/+$/,"") + "/rest/v1/painel" + "?id=eq." + encodeURIComponent(c.quadro||"transload") + "&select=atualizado_em";
+    var r = await fetch(u, { headers: sbHeaders(c) });
+    if(!r.ok) throw new Error("HTTP " + r.status + " ao checar carimbo");
+    var j = await r.json();
+    return Array.isArray(j) && j.length ? j[0].atualizado_em : null;
+  }
+
+  window.puxarDoServidor = async function(){
+    var c = lerSync();
+    if(!syncLigado()) return;
+    var bruto;
+    try{
+      bruto = await _lerCarimboEgress(c);
+    }catch(e){
+      return _puxarOriginalEgress();
+    }
+    if(!bruto) return _puxarOriginalEgress();
+    var carimbo = new Date(bruto).getTime();
+    if(carimbo <= ultimoEnvioNosso){ ultimoSyncOk = Date.now(); return; }
+    if(carimbo <= _carimboVistoEgress && !S.maquinaNova){ ultimoSyncOk = Date.now(); return; }
+    _carimboVistoEgress = carimbo;
+    return _puxarOriginalEgress();
+  };
+})();
+</script>
