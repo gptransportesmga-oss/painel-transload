@@ -3102,7 +3102,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     return (typeof slug === "function") ? slug((e.cliente||"")+" "+(e.destino||"")) : ((e.cliente||"")+"|"+(e.destino||""));
   }
 
-  function lerArquivo(file, cb){
+  async function uploadAnexoStorage(dataUrl, nomeArquivo){ try{ var c = (typeof lerSync === "function") ? lerSync() : null; if(!c || !c.url || !c.key) return null; var resp = await fetch(dataUrl); var blob = await resp.blob(); var ext = (nomeArquivo && nomeArquivo.indexOf(".")>=0) ? nomeArquivo.split(".").pop() : ((blob.type||"").indexOf("pdf")>=0 ? "pdf" : "jpg"); var caminho = "entregas/" + Date.now() + "-" + Math.random().toString(36).slice(2,8) + "." + ext; var up = await fetch(c.url.replace(/\/+$/,"") + "/storage/v1/object/anexos-entrega/" + caminho, { method: "POST", headers: { apikey: c.key, Authorization: "Bearer " + c.key, "Content-Type": blob.type || "application/octet-stream" }, body: blob }); if(!up.ok) return null; return c.url.replace(/\/+$/,"") + "/storage/v1/object/public/anexos-entrega/" + caminho; }catch(e){ return null; } } function lerArquivo(file, cb){
     if(!file) { cb(null); return; }
     if(file.type && file.type.indexOf("image/")===0){
       var reader = new FileReader();
@@ -3120,7 +3120,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
           var dataUrl;
           try { dataUrl = canvas.toDataURL("image/jpeg", 0.72); } catch(e){ dataUrl = null; }
           if(!dataUrl){ cb(null); return; }
-          cb({ nome: file.name||"foto.jpg", tipo:"image/jpeg", dataUrl: dataUrl, criadoEm: Date.now() });
+          uploadAnexoStorage(dataUrl, file.name||"foto.jpg").then(function(urlSalvo){ cb({ nome: file.name||"foto.jpg", tipo:"image/jpeg", dataUrl: urlSalvo||dataUrl, criadoEm: Date.now() }); });
         };
         img.onerror = function(){ cb(null); };
         img.src = reader.result;
@@ -3134,7 +3134,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
           try { alert("Esse arquivo é muito grande (limite de ~3MB pra arquivos que não são foto). Tente uma versão menor."); } catch(e){}
           cb(null); return;
         }
-        cb({ nome: file.name||"arquivo", tipo: file.type||"application/octet-stream", dataUrl: reader2.result, criadoEm: Date.now() });
+        uploadAnexoStorage(reader2.result, file.name||"arquivo").then(function(urlSalvo){ cb({ nome: file.name||"arquivo", tipo: file.type||"application/octet-stream", dataUrl: urlSalvo||reader2.result, criadoEm: Date.now() }); });
       };
       reader2.onerror = function(){ cb(null); };
       reader2.readAsDataURL(file);
