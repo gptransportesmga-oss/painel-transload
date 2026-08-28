@@ -100,7 +100,7 @@ const ENTREGA_MIN_MINUTOS = 60;
 const ENTREGA_HORA_INI = 8;
 const ENTREGA_HORA_FIM = 17;
 const HORAS_SEM_SINAL_FINALIZA = 5;
-const ARQUIVA_APOS_MS = 5 * 60 * 1000;
+const ARQUIVA_APOS_MS = 60 * 60 * 1000;
 
 function palavrasFortes(nome) {
   return slug(nome).split(' ').filter((w) => w.length >= 4 && !GENERICAS.has(w));
