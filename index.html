@@ -4735,6 +4735,29 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch (e) {}
 })();
 </script>
+
+<script>
+/* PATCH_STATUS_AGUARDANDO_NF v1 (28/08/2026) -- card recem-criado com bsoftAberto=true e
+   semNf=true temporario (aguardando importar a NF) nao pode ser classificado 'finalizado'
+   -- isso fazia o robo-painel-motor arquivar/apagar o card antes da hora (causa raiz do
+   loop MIZ-0858/QAW-1E78, ver pendencias-e-descobertas.md). So finaliza de verdade quando
+   o BSoft ja fechou o MDF-e (bsoftAberto=false). Nao altera d.semNf permanentemente. */
+(function(){
+  if (window.__PATCH_STATUS_AGUARDANDO_NF) return;
+  var _origStatusAutomatico = statusAutomatico;
+  window.statusAutomatico = function(d){
+    if (d.semNf && d.bsoftAberto) {
+      var salvo = d.semNf;
+      d.semNf = false;
+      var r = _origStatusAutomatico(d);
+      d.semNf = salvo;
+      return r;
+    }
+    return _origStatusAutomatico(d);
+  };
+  window.__PATCH_STATUS_AGUARDANDO_NF = "v1";
+})();
+</script>
 </html>
 <script>
 /* PATCH_EGRESS_LEVE v1 (27/08/2026) — antes de baixar o quadro inteiro do Supabase,
