@@ -4758,6 +4758,27 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   window.__PATCH_STATUS_AGUARDANDO_NF = "v1";
 })();
 </script>
+
+<script>
+/* PATCH_FOTO_RENDER_SYNC v1 (28/08/2026) - a foto do motorista sumia e reaparecia a cada
+   atualizacao do painel (sync de rastreio, calculo automatico de distancia, qualquer
+   render()). Causa: pintarFotos() (PATCH_FOTOS) so roda sozinha a cada 1500ms via
+   setInterval, desligada do render() principal - toda vez que render() reconstroi o
+   card (inovcado com frequencia), o elemento da foto e apagado e so volta no proximo
+   tick do intervalo, ate 1.5s depois. Corrigido chamando pintarFotos() na mesma chamada
+   de render(), sem esperar o intervalo. Nao mexe em nenhuma logica existente, so
+   encadeia mais uma chamada depois do render original. Para desfazer: apague este bloco. */
+(function(){
+  if (window.__PATCH_FOTO_RENDER_SYNC) return;
+  window.__PATCH_FOTO_RENDER_SYNC = "v1";
+  var __renderAntesFotoSync = render;
+  render = function(){
+    var r = __renderAntesFotoSync.apply(this, arguments);
+    try { if (typeof window.pintarFotos === "function") window.pintarFotos(); } catch(e){}
+    return r;
+  };
+})();
+</script>
 </html>
 <script>
 /* PATCH_EGRESS_LEVE v1 (27/08/2026) — antes de baixar o quadro inteiro do Supabase,
