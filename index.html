@@ -4820,11 +4820,11 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   }
   function linkDoMotoristaLM(d) {
-    if (!d.linkMotorista || !d.linkMotorista.token) {
-      d.linkMotorista = { token: tokenAleatorioLM(), criadoEm: Date.now() };
+    if (!d.linkMotorista || !d.linkMotorista.chave) {
+      d.linkMotorista = { chave: tokenAleatorioLM(), criadoEm: Date.now() };
       touch(d); save();
     }
-    return location.origin + location.pathname + '?mot=' + encodeURIComponent(d.id) + '&tok=' + encodeURIComponent(d.linkMotorista.token);
+    return location.origin + location.pathname + '?mot=' + encodeURIComponent(d.id) + '&tok=' + encodeURIComponent(d.linkMotorista.chave);
   }
   function copiarTextoLM(t) {
     var ok = false;
@@ -4972,7 +4972,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       if (!ok) { telaLM(ov, '⚠️', 'Não conseguimos carregar os dados agora. Tente atualizar a página em instantes.'); return; }
       var d = (typeof driver === 'function') ? driver(__motIdLM) : (S.drivers || []).find(function (x) { return x.id === __motIdLM; });
       if (!d) { telaLM(ov, '⚠️', 'Não encontramos essa viagem. Peça um link novo à central.'); return; }
-      if (!d.linkMotorista || d.linkMotorista.token !== __motTokLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
+      if (!d.linkMotorista || d.linkMotorista.chave !== __motTokLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
       if (Date.now() - d.linkMotorista.criadoEm > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou (validade de 5 dias). Peça um link novo à central.'); return; }
 
       ov.innerHTML = '';
