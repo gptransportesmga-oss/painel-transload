@@ -4779,6 +4779,238 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   };
 })();
 </script>
+
+<script>
+/* PATCH_LINK_MOTORISTA v1 (28/08/2026) - pedido do dono: um link individual por card/viagem pra
+   mandar pro motorista, onde ele mesmo confirma cada entrega (com foto do comprovante) sem
+   precisar mexer no painel principal. O link:
+   - fica gravado em d.linkMotorista = {token, criadoEm} (sobrevive no Supabase junto com o resto
+     do card, mesmo mecanismo de sempre - mesclarQuadro copia o objeto d inteiro).
+   - validade de 5 dias a partir de quando foi gerado (nao tem validade "ate terminar" separada
+     porque, uma vez que todas as entregas estao confirmadas, nao sobra nada pra fazer no link -
+     ele so mostra a tela de "concluido").
+   - o motorista tira foto do comprovante reaproveitando o MESMO modal de anexo que o escritorio
+     usa (window.__abrirAnexosEntrega, ja testado e publicado - PATCH_ANEXOSENTREGA), assim a foto
+     cai no mesmo d.anexosEntrega[slug(cliente+" "+destino)] de sempre, comprimida do mesmo jeito.
+   - ao confirmar uma entrega, marca e.concluida=true (mesmo campo que o checkbox "tog" do
+     escritorio usa) e, se essa foi a ultima pendente, marca d.status='finalizado' na hora +
+     um wrapper em statusAutomatico() garante que isso nao volta atras sozinho depois (ex.: se o
+     card ainda tiver d.tracking, a regra automatica normalmente devolveria 'em_rota').
+   - sync com o servidor é o mesmo de sempre: save() -> marcarAlteracao() -> enviarAoServidor()
+     (debounce de 1.8s ja existente, nao mudei nada disso).
+   Para desfazer: apagar este bloco (o link para de funcionar, mas os dados gravados em
+   d.linkMotorista/d.anexosEntrega continuam no card normalmente).
+*/
+(function () {
+  if (window.__PATCH_LINK_MOTORISTA) return;
+  window.__PATCH_LINK_MOTORISTA = "v1";
+
+  var VALIDADE_MS = 5 * 24 * 60 * 60 * 1000; // 5 dias
+
+  var _origStatusAutoLM = statusAutomatico;
+  window.statusAutomatico = function (d) {
+    if (d && Array.isArray(d.entregas) && d.entregas.length && d.entregas.every(function (e) { return e && e.concluida; })) {
+      return 'finalizado';
+    }
+    return _origStatusAutoLM(d);
+  };
+
+  function tokenAleatorioLM() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+    return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  }
+  function linkDoMotoristaLM(d) {
+    if (!d.linkMotorista || !d.linkMotorista.token) {
+      d.linkMotorista = { token: tokenAleatorioLM(), criadoEm: Date.now() };
+      touch(d); save();
+    }
+    return location.origin + location.pathname + '?mot=' + encodeURIComponent(d.id) + '&tok=' + encodeURIComponent(d.linkMotorista.token);
+  }
+  function copiarTextoLM(t) {
+    var ok = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t); ok = true; }
+    } catch (e) {}
+    if (!ok) {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (e) {}
+    }
+  }
+  function injetarBotoesLinkMotLM() {
+    document.querySelectorAll('.cardbtns').forEach(function (cb) {
+      if (cb.querySelector('[data-linkmot]')) return;
+      var card = cb.closest('.card');
+      var delBtn = card ? card.querySelector('[data-act="del"]') : null;
+      var id = delBtn ? delBtn.getAttribute('data-id') : null;
+      if (!id) return;
+      var b = document.createElement('button');
+      b.className = 'mini';
+      b.setAttribute('data-linkmot', id);
+      b.title = 'Copiar link para o motorista confirmar as entregas dele (valido 5 dias)';
+      b.textContent = '🔗 Link mot.';
+      b.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var d = driver(id);
+        if (!d) return;
+        var url = linkDoMotoristaLM(d);
+        copiarTextoLM(url);
+        var old = b.textContent;
+        b.textContent = '✅ Copiado!';
+        setTimeout(function () { b.textContent = old; }, 2000);
+      });
+      cb.appendChild(b);
+    });
+  }
+
+  var __qpLM = new URLSearchParams(location.search);
+  var __motIdLM = __qpLM.get('mot');
+  var __motTokLM = __qpLM.get('tok');
+
+  function escHtmlLM(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function aguardarDadosLM(tentativas, cb) {
+    if (S.drivers && S.drivers.length) return cb(true);
+    if (tentativas > 100) return cb(false);
+    setTimeout(function () { aguardarDadosLM(tentativas + 1, cb); }, 200);
+  }
+
+  function montarOverlayLM() {
+    var ov = document.createElement('div');
+    ov.id = 'motoristaOverlayLM';
+    ov.style.cssText = 'position:fixed;inset:0;background:#f3f1ea;color:#1B1E24;z-index:50000;overflow:auto;font-family:inherit;padding:16px;-webkit-font-smoothing:antialiased;';
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function telaLM(ov, emoji, msg) {
+    ov.innerHTML = '';
+    var box = document.createElement('div');
+    box.style.cssText = 'max-width:420px;margin:60px auto;text-align:center;';
+    box.innerHTML = '<div style="font-size:40px;margin-bottom:12px;">' + emoji + '</div><p style="font-size:16px;">' + escHtmlLM(msg) + '</p>';
+    ov.appendChild(box);
+  }
+
+  function checarTudoFeitoLM(ov, d) {
+    var todasFeitas = d.entregas && d.entregas.length && d.entregas.every(function (e) { return e.concluida; });
+    var aviso = document.getElementById('motAvisoFimLM');
+    if (todasFeitas && !aviso) {
+      aviso = document.createElement('div');
+      aviso.id = 'motAvisoFimLM';
+      aviso.style.cssText = 'max-width:480px;margin:0 auto 16px;text-align:center;background:#EAF6EE;border-radius:10px;padding:16px;color:#2E7D46;font-weight:700;';
+      aviso.textContent = '🎉 Todas as entregas confirmadas! Viagem encerrada. Obrigado!';
+      ov.insertBefore(aviso, ov.firstChild);
+    }
+    return todasFeitas;
+  }
+
+  function renderEntregaLM(container, d, idx, ov) {
+    var e = d.entregas[idx];
+    var chave = slug((e.cliente || '') + ' ' + (e.destino || ''));
+    var row = document.createElement('div');
+    row.style.cssText = 'background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.12);';
+    row.innerHTML =
+      '<div style="font-weight:700;font-size:15px;">' + (idx + 1) + '. ' + escHtmlLM(e.cliente || '') + '</div>' +
+      '<div style="color:#555;font-size:13px;margin-top:2px;">' + escHtmlLM(e.destino || '') + (e.rua ? ' — ' + escHtmlLM(e.rua) : '') + '</div>' +
+      (e.notas && e.notas.length ? '<div style="color:#888;font-size:12px;margin-top:4px;">NF ' + escHtmlLM(e.notas.join(', ')) + '</div>' : '') +
+      '<div class="areaAcaoLM" style="margin-top:10px;"></div>';
+    container.appendChild(row);
+    var area = row.querySelector('.areaAcaoLM');
+
+    function redesenharArea() {
+      if (e.concluida) {
+        area.innerHTML = '<div style="color:#2E7D46;font-weight:700;">✅ Entrega confirmada</div>';
+        return;
+      }
+      var n = (d.anexosEntrega && d.anexosEntrega[chave]) ? d.anexosEntrega[chave].length : 0;
+      area.innerHTML = '';
+      var btnFoto = document.createElement('button');
+      btnFoto.className = 'mini';
+      btnFoto.style.cssText = 'width:100%;background:#3B8C82;color:#fff;';
+      btnFoto.textContent = n > 0 ? ('📷 Foto anexada (' + n + ') — tirar outra') : '📷 Tirar foto do comprovante';
+      btnFoto.addEventListener('click', function () {
+        if (typeof window.__abrirAnexosEntrega === 'function') window.__abrirAnexosEntrega(d.id, chave);
+      });
+      var btnOk = document.createElement('button');
+      btnOk.className = 'mini';
+      btnOk.style.cssText = 'width:100%;margin-top:6px;background:' + (n > 0 ? '#2E7D46' : '#ccc') + ';color:#fff;';
+      btnOk.textContent = '✅ Confirmar entrega';
+      btnOk.disabled = n === 0;
+      btnOk.title = n === 0 ? 'Tire a foto do comprovante primeiro' : '';
+      btnOk.addEventListener('click', function () {
+        e.concluida = true;
+        e.concluidaEm = Date.now();
+        e.concluidaPor = 'link-motorista';
+        touch(d);
+        if (d.entregas.every(function (x) { return x.concluida; })) d.status = 'finalizado';
+        save();
+        redesenharArea();
+        checarTudoFeitoLM(ov, d);
+      });
+      area.appendChild(btnFoto);
+      area.appendChild(btnOk);
+    }
+    redesenharArea();
+    var iv = setInterval(function () {
+      if (!document.body.contains(row)) { clearInterval(iv); return; }
+      if (!e.concluida) redesenharArea();
+    }, 1000);
+  }
+
+  function ativarModoMotoristaLM() {
+    var ov = montarOverlayLM();
+    ov.innerHTML = '<div style="text-align:center;margin-top:80px;color:#888;">Carregando...</div>';
+    aguardarDadosLM(0, function (ok) {
+      if (!ok) { telaLM(ov, '⚠️', 'Não conseguimos carregar os dados agora. Tente atualizar a página em instantes.'); return; }
+      var d = (typeof driver === 'function') ? driver(__motIdLM) : (S.drivers || []).find(function (x) { return x.id === __motIdLM; });
+      if (!d) { telaLM(ov, '⚠️', 'Não encontramos essa viagem. Peça um link novo à central.'); return; }
+      if (!d.linkMotorista || d.linkMotorista.token !== __motTokLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
+      if (Date.now() - d.linkMotorista.criadoEm > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou (validade de 5 dias). Peça um link novo à central.'); return; }
+
+      ov.innerHTML = '';
+      var header = document.createElement('div');
+      header.style.cssText = 'max-width:480px;margin:0 auto 16px;text-align:center;';
+      header.innerHTML = '<div style="font-size:18px;font-weight:700;">' + escHtmlLM(d.motorista || '') + '</div><div style="color:#555;font-size:13px;">Placa ' + escHtmlLM(d.placa || '') + (d.mdfe ? ' · MDF-e ' + escHtmlLM(d.mdfe) : '') + '</div>';
+      ov.appendChild(header);
+
+      var lista = document.createElement('div');
+      lista.style.cssText = 'max-width:480px;margin:0 auto;';
+      ov.appendChild(lista);
+
+      if (!d.entregas || !d.entregas.length) {
+        var vazio = document.createElement('div');
+        vazio.style.cssText = 'text-align:center;color:#888;margin-top:40px;';
+        vazio.textContent = 'Nenhuma entrega cadastrada ainda pra essa viagem.';
+        lista.appendChild(vazio);
+      } else {
+        checarTudoFeitoLM(ov, d);
+        d.entregas.forEach(function (e, i) { renderEntregaLM(lista, d, i, ov); });
+      }
+    });
+  }
+
+  var __motStartedLM = false;
+  function iniciarSeForModoMotoristaLM() {
+    if (!__motIdLM || __motStartedLM) return;
+    __motStartedLM = true;
+    ativarModoMotoristaLM();
+  }
+
+  if (__motIdLM) {
+    iniciarSeForModoMotoristaLM();
+  } else {
+    setInterval(injetarBotoesLinkMotLM, 1500);
+  }
+})();
+</script>
 </html>
 <script>
 /* PATCH_EGRESS_LEVE v1 (27/08/2026) — antes de baixar o quadro inteiro do Supabase,
