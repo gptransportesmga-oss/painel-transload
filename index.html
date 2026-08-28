@@ -4714,6 +4714,27 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   setInterval(injetar, 3000);
 })();
 </script>
+
+<script>
+// PATCH_FORCA_PROJETO_ATUAL v1 -- corrige reset automatico da config de sync
+// para o projeto Supabase antigo (que estourava cota de egress). Roda depois
+// de qualquer outro script no carregamento da pagina e garante que o projeto
+// atual valido fique configurado, sem depender de nada anterior no arquivo.
+(function(){
+  try {
+    var URL_ATUAL = "https://jfkpqmbfjdjfzmqrqhzz.supabase.co";
+    var KEY_ATUAL = "sb_publishable_NsUVbJOk-gIYdREGp5DDFg_dMsM6M15";
+    var raw = localStorage.getItem("painel-viagens-sync");
+    var cfg = {};
+    try { cfg = raw ? JSON.parse(raw) : {}; } catch (e) { cfg = {}; }
+    cfg.url = URL_ATUAL;
+    cfg.key = KEY_ATUAL;
+    cfg.ativo = true;
+    localStorage.setItem("painel-viagens-sync", JSON.stringify(cfg));
+    window.__PATCH_FORCA_PROJETO_ATUAL = "v1";
+  } catch (e) {}
+})();
+</script>
 </html>
 <script>
 /* PATCH_EGRESS_LEVE v1 (27/08/2026) — antes de baixar o quadro inteiro do Supabase,
