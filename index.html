@@ -4814,3 +4814,34 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   };
 })();
 </script>
+
+<script>
+/* PATCH_REMOVE_SEMNF_AUTOFINALIZA v1 (28/08/2026) - pedido explicito do dono: "tira essa regra".
+   O aviso "Sem NF na BSoft - provavel fim de viagem" + botao Finalizar disparava errado toda
+   vez que um card era criado manualmente e o BSoft ainda nao tinha processado a placa
+   (bsoftAberto=false, semNf=true por padrao ao criar) - isso jogava cards recem-criados
+   direto pra Finalizado sozinhos (casos MIZ-0858, AZR-3073, SDQ-3C73, AXT-9F90, GAR-0E27
+   em 28/08/2026). PATCH_STATUS_AGUARDANDO_NF v1 (mais acima) so cobria o caso
+   bsoftAberto=true; este patch cobre todos os casos: d.semNf nunca mais finaliza um card
+   sozinho. O aviso visual tambem foi escondido via CSS (.semnf{display:none}), pedido do
+   dono. Para desfazer, apague este bloco e o bloco de estilo PATCH_REMOVE_SEMNF_UI. */
+(function(){
+  if (window.__PATCH_REMOVE_SEMNF_AUTOFINALIZA) return;
+  window.__PATCH_REMOVE_SEMNF_AUTOFINALIZA = "v1";
+  var _origSA = statusAutomatico;
+  window.statusAutomatico = function(d){
+    if (d && d.semNf) {
+      var salvo = d.semNf;
+      d.semNf = false;
+      var r = _origSA(d);
+      d.semNf = salvo;
+      return r;
+    }
+    return _origSA(d);
+  };
+})();
+</script>
+<style>
+/* PATCH_REMOVE_SEMNF_UI v1 - pedido do dono, 28/08/2026: esconde o aviso "Sem NF na BSoft" */
+.semnf{display:none!important}
+</style>
