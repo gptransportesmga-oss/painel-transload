@@ -4918,6 +4918,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     var row = document.createElement('div');
     row.style.cssText = 'background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.12);';
     row.className = 'lmRowLM';
+      row.dataset.lmIdx = String(idx);
     row.innerHTML =
       '<div style="font-weight:700;font-size:15px;">' + (idx + 1) + '. ' + escHtmlLM(e.cliente || '') + '</div>' +
       '<div style="color:#555;font-size:13px;margin-top:2px;">' + escHtmlLM(e.destino || '') + (e.rua ? ' — ' + escHtmlLM(e.rua) : '') + '</div>' +
@@ -4945,6 +4946,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       });
       var btnOk = document.createElement('button');
       btnOk.className = 'mini';
+      btnOk.dataset.lmConfirm = '1';
       btnOk.style.cssText = 'width:100%;margin-top:6px;background:' + (n > 0 ? '#2E7D46' : '#ccc') + ';color:#fff;';
       btnOk.textContent = '✅ Confirmar entrega';
       btnOk.disabled = n === 0;
@@ -5258,6 +5260,117 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       "#motoristaOverlayLM #motAvisoFimLM{border-radius:16px!important;font-size:16px!important;padding:22px!important}"
     ].join("\n");
     document.head.appendChild(stUI);
+  } catch (e) {}
+})();
+</script>
+
+
+<script>
+/* PATCH_LINK_MOTORISTA_CONFIRMAR_CONFIAVEL v1 (31/08/2026) - pedido do dono: garantir que assim
+   que o motorista clica em "Confirmar entrega" pelo link, o painel do escritorio realmente
+   atualiza aquela entrega como feita. Achado em teste ao vivo (simulando um motorista de
+   verdade, com localStorage limpo): a confirmacao usa o MESMO mecanismo de sincronizacao do
+   resto do painel (funciona sozinho na maioria das vezes), mas tinha duas falhas silenciosas
+   possiveis, as duas reproduzidas ao vivo antes de publicar esta correcao:
+   1) se o Supabase engasgar por um instante (aconteceu de verdade no teste - erro HTTP 503), o
+      envio falhava e nunca tentava de novo sozinho (so um .catch vazio, sem nenhum retry).
+   2) a tela do motorista fica "puxando" dados do servidor em segundo plano a cada 60s pelo
+      tempo todo que fica aberta - e, se esse "puxar" cair no meio de uma confirmacao que ainda
+      nao foi salva de verdade no servidor, ele pode sobrescrever o estado local (sem a
+      confirmacao) - e a tela do motorista nao percebe, porque o "✅ Entrega confirmada" fica
+      preso a um dado antigo que ja nao faz mais parte do estado atual.
+   Correcao (so ativa no link do motorista, gated pelo parametro mot da URL - nunca afeta o
+   painel do escritorio):
+   1) assim que os dados reais do motorista carregam (+ uma folga de 4s), para de vez o "puxar"
+      periodico (pararSync()) - o motorista nao precisa ficar recebendo atualizacao continua,
+      ele so preenche confirmacoes; isso tira o principal risco de sobrescrita.
+   2) toda confirmacao passa a tentar de novo sozinha (espera crescente, ate 8 tentativas ao
+      longo de alguns minutos) ate o servidor realmente aceitar - reaplicando "concluida=true"
+      no dado ATUAL a cada tentativa (nao numa referencia antiga), entao mesmo que algo tenha
+      sobrescrito o estado local no meio do caminho, a confirmacao volta a ser aplicada e
+      reenviada ate colar de verdade.
+   3) mostra "🔄 sincronizando..." embaixo do "✅ Entrega confirmada" enquanto isso roda, e some
+      sozinho quando o envio é realmente confirmado - ou vira um aviso se, depois de todas as
+      tentativas, ainda nao conseguiu (precisaria ficar sem internet por varios minutos seguidos).
+   Duas linhas novas foram acrescentadas dentro do PATCH_LINK_MOTORISTA original (so acrescentam
+   atributos, nao mudam nenhuma logica): row.dataset.lmIdx (identifica cada card de entrega de
+   forma estavel) e btnOk.dataset.lmConfirm (identifica o botao de confirmar). Testado ao vivo
+   antes de publicar, incluindo simulacao de falha e de sobrescrita - ver
+   pendencias-e-descobertas.md. */
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_CONFIRMAR_CONFIAVEL) return;
+  window.__PATCH_LINK_MOTORISTA_CONFIRMAR_CONFIAVEL = "v1";
+  try {
+    var qpCC = new URLSearchParams(location.search);
+    var motIdCC = qpCC.get("mot");
+    if (!motIdCC) return;
+
+    var esperaCC = 0;
+    var ivEsperaCC = setInterval(function(){
+      esperaCC++;
+      if (typeof S !== "undefined" && S.drivers && S.drivers.length) {
+        clearInterval(ivEsperaCC);
+        setTimeout(function(){
+          try { if (typeof pararSync === "function") pararSync(); } catch (e2) {}
+        }, 4000);
+      } else if (esperaCC > 150) {
+        clearInterval(ivEsperaCC);
+      }
+    }, 200);
+
+    function acharEntregaCC(idx){
+      if (typeof S === "undefined" || !S.drivers) return null;
+      var d = S.drivers.find(function(x){ return x.id === motIdCC; });
+      if (!d || !d.entregas || !d.entregas[idx]) return null;
+      return { d: d, e: d.entregas[idx] };
+    }
+    function statusElCC(row){
+      var el = row.querySelector(".lmSyncStatusLM");
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "lmSyncStatusLM";
+        el.style.cssText = "font-size:12px;margin-top:4px;font-weight:400;";
+        var area = row.querySelector(".areaAcaoLM");
+        if (area) area.appendChild(el);
+      }
+      return el;
+    }
+    function garantirEnvioCC(idx, row, tentativa){
+      var alvo = acharEntregaCC(idx);
+      if (!alvo) return;
+      if (!alvo.e.concluida) {
+        alvo.e.concluida = true;
+        alvo.e.concluidaEm = alvo.e.concluidaEm || Date.now();
+        alvo.e.concluidaPor = "link-motorista";
+        if (typeof touch === "function") touch(alvo.d);
+        if (typeof save === "function") save();
+      }
+      var st = statusElCC(row);
+      st.style.color = "#888";
+      st.textContent = "🔄 sincronizando...";
+      var atraso = Math.min(30000, 2000 * Math.pow(1.6, tentativa || 0));
+      (typeof enviarAoServidor === "function" ? enviarAoServidor() : Promise.reject(new Error("sem enviarAoServidor")))
+        .then(function(){
+          if (st.parentElement) st.parentElement.removeChild(st);
+        })
+        .catch(function(){
+          if ((tentativa || 0) < 8) {
+            setTimeout(function(){ garantirEnvioCC(idx, row, (tentativa || 0) + 1); }, atraso);
+          } else {
+            st.style.color = "#B5541A";
+            st.textContent = "⚠️ Sem conexão pra sincronizar — assim que a internet voltar, abra este link de novo.";
+          }
+        });
+    }
+    document.addEventListener("click", function(ev){
+      var btn = ev.target && ev.target.closest ? ev.target.closest('[data-lm-confirm="1"]') : null;
+      if (!btn) return;
+      var row = btn.closest(".lmRowLM");
+      if (!row || !row.dataset || typeof row.dataset.lmIdx === "undefined") return;
+      var idx = parseInt(row.dataset.lmIdx, 10);
+      if (isNaN(idx)) return;
+      setTimeout(function(){ garantirEnvioCC(idx, row, 0); }, 50);
+    }, true);
   } catch (e) {}
 })();
 </script>
