@@ -4917,6 +4917,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     var chave = slug((e.cliente || '') + ' ' + (e.destino || ''));
     var row = document.createElement('div');
     row.style.cssText = 'background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.12);';
+    row.className = 'lmRowLM';
     row.innerHTML =
       '<div style="font-weight:700;font-size:15px;">' + (idx + 1) + '. ' + escHtmlLM(e.cliente || '') + '</div>' +
       '<div style="color:#555;font-size:13px;margin-top:2px;">' + escHtmlLM(e.destino || '') + (e.rua ? ' — ' + escHtmlLM(e.rua) : '') + '</div>' +
@@ -4978,6 +4979,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       ov.innerHTML = '';
       var header = document.createElement('div');
       header.style.cssText = 'max-width:480px;margin:0 auto 16px;text-align:center;';
+      header.className = 'lmHeaderLM';
       header.innerHTML = '<div style="font-size:18px;font-weight:700;">' + escHtmlLM(d.motorista || '') + '</div><div style="color:#555;font-size:13px;">Placa ' + escHtmlLM(d.placa || '') + (d.mdfe ? ' · MDF-e ' + escHtmlLM(d.mdfe) : '') + '</div>';
       ov.appendChild(header);
 
@@ -5216,5 +5218,42 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       return Array.isArray(jFB) && jFB.length ? jFB[0] : null;
     }
   };
+})();
+</script>
+
+<script>
+/* PATCH_LINK_MOTORISTA_UI_V2 (31/08/2026) - pedido do dono: melhorar o visual da tela que o
+   motorista ve pelo link, com botoes/textos maiores, e tirar a possibilidade dele apagar uma
+   foto ja anexada (o modal de anexo e compartilhado com o escritorio e tem um botao de lixeira
+   por anexo - so faz sentido pro escritorio corrigir um upload errado, nao pro motorista).
+   So ativa quando a URL tem o parametro mot (ou seja, so afeta a tela do motorista - nunca o
+   painel do escritorio). Duas partes:
+   1) esconde via CSS o botao de lixeira (title="Remover") dentro do modal de anexo;
+   2) adiciona classes (lmHeaderLM/lmRowLM) no cabecalho e nos cards de entrega - via 2 linhas
+      novas dentro do PATCH_LINK_MOTORISTA original (so acrescentam um className, nao mudam
+      nenhuma logica) - e usa essas classes pra deixar o visual mais bonito e os botoes maiores. */
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_UI_V2) return;
+  window.__PATCH_LINK_MOTORISTA_UI_V2 = "v1";
+  try {
+    var qpUI = new URLSearchParams(location.search);
+    if (!qpUI.get("mot")) return;
+    var stUI = document.createElement("style");
+    stUI.textContent = [
+      '#__anexoModal button[title="Remover"]{display:none!important}',
+      "#motoristaOverlayLM{background:#EFEDE4!important;padding:24px 16px 48px!important}",
+      "#motoristaOverlayLM .lmHeaderLM{background:linear-gradient(135deg,#2E7D46,#3B8C82)!important;color:#fff!important;border-radius:16px!important;padding:26px 20px 20px!important;box-shadow:0 4px 14px rgba(46,125,70,.25)!important;margin:0 auto 22px!important;position:relative}",
+      '#motoristaOverlayLM .lmHeaderLM::before{content:"🚚";display:block;font-size:32px;margin-bottom:8px;line-height:1}',
+      "#motoristaOverlayLM .lmHeaderLM>div:first-child{font-size:20px!important}",
+      "#motoristaOverlayLM .lmHeaderLM>div:nth-child(2){color:rgba(255,255,255,.85)!important;font-size:14px!important;margin-top:6px!important}",
+      "#motoristaOverlayLM .lmRowLM{border-radius:16px!important;padding:18px!important;margin-bottom:16px!important;box-shadow:0 2px 8px rgba(0,0,0,.08)!important;border:1px solid #E7E3D6!important}",
+      "#motoristaOverlayLM .lmRowLM>div:first-child{font-size:17px!important}",
+      "#motoristaOverlayLM .lmRowLM>div:nth-child(2){font-size:14px!important;margin-top:4px!important}",
+      "#motoristaOverlayLM .areaAcaoLM button.mini{font-size:16px!important;padding:16px 14px!important;border-radius:12px!important;font-weight:700!important;min-height:52px!important}",
+      "#motoristaOverlayLM .areaAcaoLM button.mini:disabled{opacity:.6!important}",
+      "#motoristaOverlayLM #motAvisoFimLM{border-radius:16px!important;font-size:16px!important;padding:22px!important}"
+    ].join("\n");
+    document.head.appendChild(stUI);
+  } catch (e) {}
 })();
 </script>
