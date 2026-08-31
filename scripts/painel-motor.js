@@ -210,7 +210,7 @@ function entregaNaReferencia(d) {
 function statusAutomatico(d) {
     if (d.semNf) return 'finalizado';
     if (d.status === 'finalizado') return 'finalizado';
-    if ((d.status === 'em_rota' || d.status === 'no_cliente') && !d.bsoftAberto &&
+    if ((d.status === 'em_rota' || d.status === 'no_cliente') &&
               semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return 'finalizado';
     if (entregaNaReferencia(d) >= 0) return 'no_cliente';
     if (!(d.entregas && d.entregas.length)) return 'carregando';
