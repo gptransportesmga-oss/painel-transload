@@ -5100,4 +5100,46 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       } catch (e) {}
   })();
 </script>
+
+
+<script>
+  /* PATCH_REMOVE_ENTREGA_AUTO_CONFIRMA v1 (31/08/2026) - pedido do dono: "tira essa regra pf".
+     A regra antiga (PATCH_ENTREGA_AUTO_FIX v1, dentro de processarEntregas()) confirmava a entrega
+        sozinha assim que o caminhao ficava 60 minutos parado no raio do cliente. Isso confirmava a
+           entrega errado quando o caminhao so estava esperando fila pra descarregar (caso real: AIL-6D84
+              ficou 60min parada na SOLABIA esperando descarregar, foi marcada como entregue sozinha e sumiu
+                 do quadro sem ter descarregado de verdade). Este patch desfaz qualquer confirmacao automatica
+                    feita por processarEntregas() logo depois dela acontecer, sem mexer no resto da funcao (a
+                       deteccao de chegada no cliente, o cronometro "no cliente" e os outros eventos continuam
+                          funcionando normalmente). Confirmacao de entrega agora so acontece de forma manual - pelo
+                             escritorio ou pelo link do motorista (PATCH_LINK_MOTORISTA / PATCH_LINK_MOTORISTA_SEM_LOGIN). */
+  (function(){
+      if (window.__PATCH_REMOVE_ENTREGA_AUTO_CONFIRMA) return;
+      window.__PATCH_REMOVE_ENTREGA_AUTO_CONFIRMA = "v1";
+      if (typeof window.processarEntregas !== "function") return;
+      var _origProcessarEntregasRAC = window.processarEntregas;
+      window.processarEntregas = function(){
+            var antesRAC = new Map();
+            (S.drivers || []).forEach(function(d){
+                    (d.entregas || []).forEach(function(e){ antesRAC.set(e, e.concluida); });
+            });
+            var eventosRAC = _origProcessarEntregasRAC();
+            (S.drivers || []).forEach(function(d){
+                    var mudouRAC = false;
+                    (d.entregas || []).forEach(function(e){
+                              if (e._auto && e.concluida && antesRAC.get(e) === false) {
+                                          e.concluida = false;
+                                          delete e._auto;
+                                          delete e._concluidaEm;
+                                          mudouRAC = true;
+                              }
+                    });
+                    if (mudouRAC) {
+                              var entsRAC = d.entregas || [];
+                              d._entregasOk = !!(entsRAC.length && entsRAC.every(function(e){ return e.concluida; }));
+                    }
+            });
+            return (eventosRAC || []).filter(function(msg){ return !/entrega concluida:/.test(msg); });
+      };
+  })();
 </script>
