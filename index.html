@@ -4922,6 +4922,9 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       '<div style="font-weight:700;font-size:15px;">' + (idx + 1) + '. ' + escHtmlLM(e.cliente || '') + '</div>' +
       '<div style="color:#555;font-size:13px;margin-top:2px;">' + escHtmlLM(e.destino || '') + (e.rua ? ' — ' + escHtmlLM(e.rua) : '') + '</div>' +
       (e.notas && e.notas.length ? '<div style="color:#888;font-size:12px;margin-top:4px;">NF ' + escHtmlLM(e.notas.join(', ')) + '</div>' : '') +
+      '<a class="lmMapaLM" href="https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent((e.rua ? e.rua + ', ' : '') + (e.destino || '')) +
+      '" target="_blank" rel="noopener">📍 Abrir no mapa</a>' +
       '<div class="areaAcaoLM" style="margin-top:10px;"></div>';
     container.appendChild(row);
     var area = row.querySelector('.areaAcaoLM');
@@ -5251,6 +5254,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       "#motoristaOverlayLM .lmRowLM>div:nth-child(2){font-size:14px!important;margin-top:4px!important}",
       "#motoristaOverlayLM .areaAcaoLM button.mini{font-size:16px!important;padding:16px 14px!important;border-radius:12px!important;font-weight:700!important;min-height:52px!important}",
       "#motoristaOverlayLM .areaAcaoLM button.mini:disabled{opacity:.6!important}",
+      "#motoristaOverlayLM .lmMapaLM{display:inline-flex;align-items:center;gap:6px;margin-top:10px;margin-bottom:4px;padding:10px 14px;background:#EAF3F1;color:#256B62!important;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none!important}",
       "#motoristaOverlayLM #motAvisoFimLM{border-radius:16px!important;font-size:16px!important;padding:22px!important}"
     ].join("\n");
     document.head.appendChild(stUI);
