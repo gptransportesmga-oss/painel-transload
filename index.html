@@ -5143,3 +5143,37 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       };
   })();
 </script>
+
+<script>
+/* PATCH_LINK_MOTORISTA_FIX_RACE_E_LOGIN v1 (31/08/2026) - o link do motorista (PATCH_LINK_MOTORISTA_SEM_LOGIN v1)
+   ainda nao funcionava de verdade num celular que nunca abriu o painel antes (a situacao real de
+   qualquer motorista). Dois problemas achados testando com localStorage vazio de proposito, simulando
+   o primeiro acesso de um motorista:
+   1) A tela de login (#login) fica visivel por padrao e tem z-index MAIOR (99999) que a tela cheia
+      do motorista (#motoristaOverlayLM, z-index 50000) - entao a tela de login ficava por cima,
+      escondendo a viagem mesmo quando os dados estavam certos.
+   2) load() usa um array de exemplo (SEED) como dado inicial quando o navegador nunca usou o painel
+      (sem nada salvo ainda) - e o cronometro que espera os dados chegarem (aguardarDadosLM, dentro
+      do PATCH_LINK_MOTORISTA) so confere se ja tem alguma coisa em S.drivers, nao se os dados REAIS
+      ja chegaram do servidor. Resultado: com o SEED (11 placas de exemplo, nenhuma delas real)
+      contando como dados prontos quase na hora, o motorista caia direto no erro Nao encontramos
+      essa viagem antes da sincronizacao real (que leva poucos segundos) trazer a viagem verdadeira.
+   Fix: esconde a tela de login assim que detecta o parametro mot na URL, e zera S.drivers de volta
+   pra vazio se o load() (ja chamado pelo PATCH_LINK_MOTORISTA_SEM_LOGIN, que roda antes deste bloco
+   no arquivo) acabou de usar o SEED de exemplo nesse mesmo carregamento - assim o cronometro
+   continua esperando (ate 20s) a sincronizacao real de verdade, em vez de desistir cedo com dado
+   de exemplo. Testado ao vivo com localStorage limpo antes de publicar. */
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_FIX_RACE_E_LOGIN) return;
+  window.__PATCH_LINK_MOTORISTA_FIX_RACE_E_LOGIN = "v1";
+  try {
+    var qpFR = new URLSearchParams(location.search);
+    if (!qpFR.get("mot")) return;
+    var loginElFR = document.getElementById("login");
+    if (loginElFR) loginElFR.style.display = "none";
+    if (typeof S !== "undefined" && S.maquinaNova && S.drivers && S.drivers.length) {
+      S.drivers = [];
+    }
+  } catch (e) {}
+})();
+</script>
