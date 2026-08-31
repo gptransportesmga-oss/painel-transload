@@ -5077,3 +5077,27 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 /* PATCH_REMOVE_SEMNF_UI v1 - pedido do dono, 28/08/2026: esconde o aviso "Sem NF na BSoft" */
 .semnf{display:none!important}
 </style>
+
+<script>
+  /* PATCH_LINK_MOTORISTA_SEM_LOGIN v1 (31/08/2026) - pedido do dono: motorista abrir o link sem
+     precisar de login/senha. Causa raiz do link nao funcionar: o carregamento de dados do painel
+        (iniciarPainel(), que faz S.drivers ser preenchido) so era chamado depois do login do
+           escritorio (abrirPainel()). O motorista nunca loga, entao S.drivers ficava vazio pra sempre e
+              a tela do link caia no erro de nao conseguir carregar os dados apos 20s de espera.
+                 Este patch, quando detecta o parametro mot na URL (link do motorista), chama iniciarPainel()
+                    direto, sem exigir login - a tela cheia do motorista (PATCH_LINK_MOTORISTA, z-index 50000) ja
+                       cobre toda a interface interna, entao o motorista nunca ve a tela de login nem o painel
+                          administrativo. Login normal do escritorio continua exigindo senha, sem nenhuma mudanca ali. */
+  (function(){
+      if (window.__PATCH_LINK_MOTORISTA_SEM_LOGIN) return;
+      window.__PATCH_LINK_MOTORISTA_SEM_LOGIN = "v1";
+      try {
+            var qpSL = new URLSearchParams(location.search);
+            if (qpSL.get('mot') && typeof window.iniciarPainel === 'function' && !window.__painelIniciadoSemLoginLM) {
+                    window.__painelIniciadoSemLoginLM = true;
+                    window.iniciarPainel();
+            }
+      } catch (e) {}
+  })();
+</script>
+</script>
