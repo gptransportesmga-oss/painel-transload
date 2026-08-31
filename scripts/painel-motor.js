@@ -103,7 +103,7 @@ const RAIO_CLIENTE_M = 200;
 const VEL_PARADO_KMH = 5;
 const ENTREGA_MIN_MINUTOS = 60;
 const ENTREGA_HORA_INI = 8;
-const ENTREGA_HORA_FIM = 17;
+const ENTREGA_HORA_FIM = 18;
 const HORAS_SEM_SINAL_FINALIZA = 5;
 const ARQUIVA_APOS_MS = 60 * 60 * 1000;
 
@@ -578,17 +578,25 @@ function rodarMotor(dados, mapeados) {
                           eventos.push(d.placa + ': chegou em ' + e.cliente);
                 }
         }
-        (d.entregas || []).forEach((e) => {
-                if (e.concluida || !e._chegouEm) return;
-                const parado = (agora - e._chegouEm) / 60000;
-                if (parado >= ENTREGA_MIN_MINUTOS && emHorarioUtil(e._chegouEm)) {
-                          e.concluida = true;
-                          e._auto = true;
-                          e._concluidaEm = agora;
-                          d.updatedAt = agora + 60000;
-                          eventos.push(d.placa + ': entrega concluida automaticamente: ' + e.cliente);
-                }
-        });
+        /* REMOVIDO (31/08/2026) - pedido do dono ("tira essa regra pf", ver claude/pendencias-e-descobertas.md):
+           a confirmacao automatica de entrega so por tempo parado foi desativada tambem aqui no robo da nuvem
+           (o navegador ja tinha sido corrigido em 31/08 via PATCH_REMOVE_ENTREGA_AUTO_CONFIRMA v1, mas esse
+           script roda separado e ainda tinha a mesma regra ativa). O caminhao pode ficar parado no cliente so
+           esperando fila pra descarregar, nao significa que a entrega terminou de verdade. A deteccao de
+           chegada (_chegouEm, acima) continua ativa - so a confirmacao automatica da entrega foi desligada.
+           Confirmacao de entrega agora e so manual, pelo escritorio ou pelo link do motorista.
+           Bloco original abaixo, comentado so pra referencia caso precise reativar um dia: */
+        // (d.entregas || []).forEach((e) => {
+        //         if (e.concluida || !e._chegouEm) return;
+        //         const parado = (agora - e._chegouEm) / 60000;
+        //         if (parado >= ENTREGA_MIN_MINUTOS && emHorarioUtil(e._chegouEm)) {
+        //                   e.concluida = true;
+        //                   e._auto = true;
+        //                   e._concluidaEm = agora;
+        //                   d.updatedAt = agora + 60000;
+        //                   eventos.push(d.placa + ': entrega concluida automaticamente: ' + e.cliente);
+        //         }
+        // });
         const ents = d.entregas || [];
         const novoOk = !!(ents.length && ents.every((e) => e.concluida));
         if (d._entregasOk !== novoOk) { d._entregasOk = novoOk; d.updatedAt = agora + 60000; }
