@@ -5177,3 +5177,44 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch (e) {}
 })();
 </script>
+
+<script>
+/* PATCH_SBLER_FALLBACK_PAINEL_LEVE v1 (31/08/2026) - achado enquanto investigava por que o link
+   do motorista (PATCH_LINK_MOTORISTA_SEM_LOGIN v1 + PATCH_LINK_MOTORISTA_FIX_RACE_E_LOGIN v1) ainda
+   nao funcionava de verdade num celular novo. Causa raiz, mais funda e mais grave do que parecia:
+   o PATCH_HISTORICO_SOB_DEMANDA v1 (antigo, pra economizar egress) substituiu window.sbLer inteiro
+   por uma versao que so consulta a view painel_leve no banco - so que essa view foi criada no
+   projeto Supabase ANTIGO (antes da migracao de 27-28/08 pro projeto atual, ver
+   migracao-supabase-projeto-novo.md) e NUNCA foi recriada no projeto novo. Toda vez que o painel
+   realmente precisa puxar dados completos do zero (aparelho nunca sincronizado, ou dado do servidor
+   mudou), window.sbLer falha com HTTP 404 ("Could not find the table public.painel_leve") e nao
+   tinha nenhum fallback - a promessa rejeitada nem aparece como erro visivel (ninguem awaita o
+   resultado la em cima), e o painel simplesmente nunca recebe o dado real. No link do motorista
+   isso aparecia como "Nao encontramos essa viagem" (o S.drivers ficava vazio/com dado de exemplo
+   pra sempre); no painel administrativo o efeito e mais disfarcado, porque a maioria das sessoes
+   fica aberta o dia inteiro e raramente precisa de um pull completo do zero.
+   Fix: embrulha window.sbLer de novo - tenta a versao atual (painel_leve) primeiro exatamente como
+   antes, e so em caso de falha cai pra uma leitura completa direto da tabela painel (select=*),
+   que sempre existe. Nao precisa mexer no banco (a chave publica do painel nao tem permissao pra
+   criar view/tabela, so pra ler - ver como-atualizar-o-painel.md). Testado ao vivo antes de
+   publicar: com o fallback, window.sbLer voltou a trazer os 22 motoristas reais (incluindo a
+   AIL-6D84) mesmo com a view painel_leve retornando 404. */
+(function(){
+  if (window.__PATCH_SBLER_FALLBACK_PAINEL_LEVE) return;
+  window.__PATCH_SBLER_FALLBACK_PAINEL_LEVE = "v1";
+  if (typeof window.sbLer !== "function") return;
+  var _sbLerAtualFB = window.sbLer;
+  window.sbLer = async function(c){
+    try {
+      return await _sbLerAtualFB(c);
+    } catch (eFallbackSB) {
+      var uFB = c.url.replace(/\/+$/, "") + "/rest/v1/painel?id=eq." + encodeURIComponent(c.quadro || "transload") + "&select=*";
+      var headersFB = (typeof sbHeaders === "function") ? sbHeaders(c) : {apikey: c.key, Authorization: "Bearer " + c.key};
+      var rFB = await fetch(uFB, { headers: headersFB });
+      if (!rFB.ok) throw new Error("HTTP " + rFB.status + " ao ler (fallback completo)");
+      var jFB = await rFB.json();
+      return Array.isArray(jFB) && jFB.length ? jFB[0] : null;
+    }
+  };
+})();
+</script>
