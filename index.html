@@ -5462,3 +5462,75 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch (e) {}
 })();
 </script>
+
+<script>
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_ANEXOS) return;
+  window.__PATCH_LINK_MOTORISTA_ANEXOS = "v1";
+  try {
+    var qpAnx = new URLSearchParams(location.search);
+    var motIdAnx = qpAnx.get('mot');
+    if (!motIdAnx) return;
+
+    function atualizarAnexosLM(){
+      var d = (typeof driver === 'function') ? driver(motIdAnx) : null;
+      if (!d || !d.entregas) return;
+      var ov = document.getElementById('motoristaOverlayLM');
+      if (!ov) return;
+      var rows = ov.querySelectorAll('.lmRowLM');
+      rows.forEach(function(row){
+        var idx = parseInt(row.dataset.lmIdx, 10);
+        if (isNaN(idx)) return;
+        var e = d.entregas[idx];
+        if (!e) return;
+        var chave = (typeof slug === 'function') ? slug((e.cliente || '') + ' ' + (e.destino || '')) : null;
+        var lista = (chave && d.anexosEntrega && d.anexosEntrega[chave]) ? d.anexosEntrega[chave] : [];
+        var box = row.querySelector('.lmAnexosBaixarLM');
+        if (!lista.length) {
+          if (box) box.remove();
+          return;
+        }
+        var assinatura = lista.map(function(a){ return (a.nome||'') + '|' + (a.criadoEm||''); }).join(',');
+        if (box && box.dataset.assinatura === assinatura) return;
+        if (!box) {
+          box = document.createElement('div');
+          box.className = 'lmAnexosBaixarLM';
+          var area = row.querySelector('.areaAcaoLM');
+          if (area) row.insertBefore(box, area);
+          else row.appendChild(box);
+        }
+        box.innerHTML = '';
+        var cPdf = 0, cImg = 0;
+        lista.forEach(function(anx, ai){
+          var nome = anx.nome || ('anexo_' + (ai + 1));
+          var ehPdf = anx.tipo && anx.tipo.indexOf('pdf') !== -1;
+          var rotulo;
+          if (ehPdf) { cPdf++; rotulo = '📄 Baixar nota fiscal' + (cPdf > 1 ? ' ' + cPdf : ''); }
+          else { cImg++; rotulo = '🖼️ Baixar foto' + (cImg > 1 ? ' ' + cImg : ''); }
+          var a = document.createElement('a');
+          a.href = anx.dataUrl;
+          a.download = nome;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.className = 'lmAnexoLinkLM';
+          a.textContent = rotulo;
+          box.appendChild(a);
+        });
+        box.dataset.assinatura = assinatura;
+      });
+    }
+
+    var stAnx = document.createElement('style');
+    stAnx.textContent = [
+      '.lmAnexosBaixarLM{margin-top:8px;margin-bottom:4px;}',
+      '.lmAnexoLinkLM{display:block;background:#EAF3F1;color:#256B62;font-size:13px;font-weight:600;padding:8px 12px;border-radius:8px;margin-bottom:6px;text-decoration:none;text-align:center;}'
+    ].join('\n');
+    document.head.appendChild(stAnx);
+
+    var obsAnx = new MutationObserver(function(){ atualizarAnexosLM(); });
+    obsAnx.observe(document.documentElement, {childList:true, subtree:true, characterData:true});
+    atualizarAnexosLM();
+    setInterval(atualizarAnexosLM, 1500);
+  } catch (e) {}
+})();
+</script>
