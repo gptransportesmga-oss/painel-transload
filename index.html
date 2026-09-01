@@ -5374,3 +5374,34 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch (e) {}
 })();
 </script>
+
+<script>
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_AUTORETRY) return;
+  window.__PATCH_LINK_MOTORISTA_AUTORETRY = "v1";
+  try {
+    var qpLMR = new URLSearchParams(location.search);
+    if (!qpLMR.get('mot')) return;
+    var KEY_LMR = 'lmAutoRetryCount_' + qpLMR.get('mot');
+    var tentativasFeitasLMR = parseInt(sessionStorage.getItem(KEY_LMR) || '0', 10);
+    var MAX_TENTATIVAS_LMR = 2;
+    var obsLMR = new MutationObserver(function(){
+      var ovLMR = document.getElementById('motoristaOverlayLM');
+      if (!ovLMR) return;
+      var textoLMR = ovLMR.textContent || '';
+      if (textoLMR.indexOf('Não conseguimos carregar os dados agora') !== -1) {
+        if (tentativasFeitasLMR < MAX_TENTATIVAS_LMR) {
+          tentativasFeitasLMR++;
+          try { sessionStorage.setItem(KEY_LMR, String(tentativasFeitasLMR)); } catch(e) {}
+          obsLMR.disconnect();
+          setTimeout(function(){ location.reload(); }, 800);
+        }
+      } else if (textoLMR.trim() !== '' && textoLMR.indexOf('Carregando') === -1) {
+        try { sessionStorage.removeItem(KEY_LMR); } catch(e) {}
+        obsLMR.disconnect();
+      }
+    });
+    obsLMR.observe(document.documentElement, {childList:true, subtree:true, characterData:true});
+  } catch(e) {}
+})();
+</script>
