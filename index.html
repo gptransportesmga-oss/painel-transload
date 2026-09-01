@@ -5405,3 +5405,60 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch(e) {}
 })();
 </script>
+
+<script>
+(function(){
+  if (window.__PATCH_LINK_MOTORISTA_UI_V3) return;
+  window.__PATCH_LINK_MOTORISTA_UI_V3 = "v1";
+  try {
+    var qpUI3 = new URLSearchParams(location.search);
+    if (!qpUI3.get('mot')) return;
+
+    var stUI3 = document.createElement('style');
+    stUI3.textContent = [
+      '#motoristaOverlayLM .areaAcaoLM button.mini:disabled{background:#8a8a86!important;color:#fff!important;opacity:1!important}',
+      '.lmStepLM{display:inline-block;background:#EAF3F1;color:#256B62;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;margin-bottom:8px}',
+      '.lmConfirmHintLM{font-size:12px;color:#8a6d1a;margin-top:6px;text-align:center}'
+    ].join('\n');
+    document.head.appendChild(stUI3);
+
+    function atualizarUI3(){
+      var ov = document.getElementById('motoristaOverlayLM');
+      if (!ov) return;
+      var rows = ov.querySelectorAll('.lmRowLM');
+      var total = rows.length;
+      rows.forEach(function(row, i){
+        var badge = row.querySelector('.lmStepLM');
+        if (total > 1) {
+          var texto = 'Entrega ' + (i + 1) + ' de ' + total;
+          if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'lmStepLM';
+            row.insertBefore(badge, row.firstChild);
+          }
+          if (badge.textContent !== texto) badge.textContent = texto;
+        } else if (badge) {
+          badge.remove();
+        }
+        var btn = row.querySelector('button[data-lm-confirm="1"]');
+        var hint = row.querySelector('.lmConfirmHintLM');
+        if (btn && btn.disabled && btn.title) {
+          if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'lmConfirmHintLM';
+            btn.insertAdjacentElement('afterend', hint);
+          }
+          var textoHint = '⚠️ ' + btn.title;
+          if (hint.textContent !== textoHint) hint.textContent = textoHint;
+        } else if (hint) {
+          hint.remove();
+        }
+      });
+    }
+
+    var obsUI3 = new MutationObserver(function(){ atualizarUI3(); });
+    obsUI3.observe(document.documentElement, {childList:true, subtree:true, characterData:true});
+    atualizarUI3();
+  } catch (e) {}
+})();
+</script>
