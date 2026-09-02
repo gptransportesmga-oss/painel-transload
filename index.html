@@ -5534,3 +5534,69 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   } catch (e) {}
 })();
 </script>
+
+<script>
+/* PATCH_DEDUP_PLACA -- 02/09/2026
+   Impede duplicidade de card ativo por placa: ao mesclar dados do servidor
+   (mesclarQuadro) e a cada save(), colapsa cards com a mesma placa em um so,
+   priorizando o que tiver mdfe preenchido, depois mais entregas, depois
+   updatedAt mais recente. Campos em branco do vencedor sao preenchidos com
+   os do perdedor (motorista, mdfe, telefone, tracking). So atua em listas
+   de viagens ATIVAS (S.drivers / resultado.motoristas) -- nunca no arquivo
+   historico, onde repetir placa ao longo do tempo e normal. */
+(function(){
+  function normPlacaDedup(p){
+    return (typeof normalizePlaca === 'function') ? normalizePlaca(p) : (p||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  }
+  function compararCardsDedup(a, b){
+    var amdfe = a.mdfe ? 1 : 0, bmdfe = b.mdfe ? 1 : 0;
+    if(amdfe !== bmdfe) return amdfe - bmdfe;
+    var aent = (a.entregas||[]).length, bent = (b.entregas||[]).length;
+    if(aent !== bent) return aent - bent;
+    return (a.updatedAt||0) - (b.updatedAt||0);
+  }
+  function mesclarCamposDedup(vencedor, perdedor){
+    ['motorista','mdfe','telefone','tracking'].forEach(function(campo){
+      if((vencedor[campo]===undefined||vencedor[campo]===''||vencedor[campo]===null) && perdedor[campo]!==undefined && perdedor[campo]!=='' && perdedor[campo]!==null){
+        vencedor[campo] = perdedor[campo];
+      }
+    });
+    return vencedor;
+  }
+  window.dedupPorPlaca = function(lista){
+    if(!Array.isArray(lista)) return lista;
+    var porPlaca = {}; var ordem = [];
+    lista.forEach(function(d){
+      if(!d) return;
+      var pl = normPlacaDedup(d.placa);
+      if(!pl){ ordem.push(d); return; }
+      if(!porPlaca[pl]){ porPlaca[pl]=d; ordem.push(d); }
+      else {
+        var atual = porPlaca[pl];
+        var vencedor = compararCardsDedup(d, atual) > 0 ? d : atual;
+        var perdedor = vencedor===d ? atual : d;
+        mesclarCamposDedup(vencedor, perdedor);
+        var idx = ordem.indexOf(atual);
+        if(idx>-1) ordem[idx]=vencedor;
+        porPlaca[pl]=vencedor;
+      }
+    });
+    return ordem;
+  };
+  if(!window.__mesclarQuadroOriginalDedup){
+    window.__mesclarQuadroOriginalDedup = window.mesclarQuadro;
+    window.mesclarQuadro = function(local, remoto){
+      var resultado = window.__mesclarQuadroOriginalDedup(local, remoto);
+      if(resultado && Array.isArray(resultado.motoristas)) resultado.motoristas = window.dedupPorPlaca(resultado.motoristas);
+      return resultado;
+    };
+  }
+  if(!window.__saveOriginalDedup){
+    window.__saveOriginalDedup = window.save;
+    window.save = function(){
+      if(typeof S !== 'undefined' && S && Array.isArray(S.drivers)) S.drivers = window.dedupPorPlaca(S.drivers);
+      return window.__saveOriginalDedup.apply(this, arguments);
+    };
+  }
+})();
+</script>
