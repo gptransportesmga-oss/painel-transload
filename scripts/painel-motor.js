@@ -379,19 +379,25 @@ async function lerLinhaUmaVez() {
       return j[0];
 }
 
-async function lerLinha() {
+async function lerLinha(tentativas) {
+      tentativas = tentativas || 6;
       console.log('robo-painel-motor: lendo quadro atual no Supabase...');
-      try {
-                  const linha = await lerLinhaUmaVez();
-                  console.log('robo-painel-motor: quadro lido com sucesso.');
-                  return linha;
-      } catch (e) {
-                  console.log('robo-painel-motor: primeira tentativa de leitura falhou (' + (e && e.message ? e.message : e) + '), tentando de novo em 5s...');
-                  await new Promise((r) => setTimeout(r, 5000));
-                  const linha = await lerLinhaUmaVez();
-                  console.log('robo-painel-motor: quadro lido com sucesso (2a tentativa).');
-                  return linha;
+      let ultimoErro;
+      for (let i = 0; i < tentativas; i++) {
+                  try {
+                              const linha = await lerLinhaUmaVez();
+                              if (i > 0) console.log('robo-painel-motor: quadro lido com sucesso (tentativa ' + (i + 1) + '/' + tentativas + ').');
+                              else console.log('robo-painel-motor: quadro lido com sucesso.');
+                              return linha;
+                  } catch (e) {
+                              ultimoErro = e;
+                              if (i === tentativas - 1) break;
+                              const espera = Math.min(5000 * (i + 1), 30000);
+                              console.log('robo-painel-motor: tentativa ' + (i + 1) + '/' + tentativas + ' de leitura falhou (' + (e && e.message ? e.message : e) + '), tentando de novo em ' + Math.round(espera / 1000) + 's...');
+                              await new Promise((r) => setTimeout(r, espera));
+                  }
       }
+      throw ultimoErro;
 }
 async function gravarComCAS(mutar, tentativas) {
     tentativas = tentativas || 5;
