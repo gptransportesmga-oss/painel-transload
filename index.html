@@ -4912,7 +4912,13 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
     return todasFeitas;
   }
 
-  function renderEntregaLM(container, d, idx, ov) {
+  function redesenharListaLM(container, d, ov) {
+  container.innerHTML = '';
+  d.entregas.forEach(function (e, i) { renderEntregaLM(container, d, i, ov); });
+  checarTudoFeitoLM(ov, d);
+}
+
+function renderEntregaLM(container, d, idx, ov) {
     var e = d.entregas[idx];
     var chave = slug((e.cliente || '') + ' ' + (e.destino || ''));
     var row = document.createElement('div');
@@ -4928,6 +4934,39 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       '" target="_blank" rel="noopener">📍 Abrir no mapa</a>' +
       '<div class="areaAcaoLM" style="margin-top:10px;"></div>';
     container.appendChild(row);
+  var arrowsPRE = document.createElement('div');
+  arrowsPRE.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+  var upPRE = document.createElement('button');
+  upPRE.className = 'mini';
+  upPRE.textContent = '▲ Subir';
+  upPRE.style.cssText = 'flex:1;opacity:' + (idx === 0 ? '.4' : '1');
+  upPRE.disabled = (idx === 0);
+  upPRE.addEventListener('click', function () {
+    if (idx <= 0) return;
+    var tmp = d.entregas[idx - 1];
+    d.entregas[idx - 1] = d.entregas[idx];
+    d.entregas[idx] = tmp;
+    touch(d);
+    save();
+    redesenharListaLM(container, d, ov);
+  });
+  var downPRE = document.createElement('button');
+  downPRE.className = 'mini';
+  downPRE.textContent = 'Descer ▼';
+  downPRE.style.cssText = 'flex:1;opacity:' + (idx === d.entregas.length - 1 ? '.4' : '1');
+  downPRE.disabled = (idx === d.entregas.length - 1);
+  downPRE.addEventListener('click', function () {
+    if (idx >= d.entregas.length - 1) return;
+    var tmp = d.entregas[idx + 1];
+    d.entregas[idx + 1] = d.entregas[idx];
+    d.entregas[idx] = tmp;
+    touch(d);
+    save();
+    redesenharListaLM(container, d, ov);
+  });
+  arrowsPRE.appendChild(upPRE);
+  arrowsPRE.appendChild(downPRE);
+  row.appendChild(arrowsPRE);
     var area = row.querySelector('.areaAcaoLM');
 
     function redesenharArea() {
@@ -5598,5 +5637,89 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
       return window.__saveOriginalDedup.apply(this, arguments);
     };
   }
+})();
+</script>
+
+<script>
+/* PATCH_REORDENAR_ENTREGAS v1 (03/09/2026) - pedido do dono: poder ajustar manualmente a
+ordem das entregas de um card (qual vai ser a primeira, qual vai ser a ultima), sem depender
+so da sugestao automatica por distancia (PATCH_DISTANCIA_ENTREGAS, que e so uma sugestao em
+linha reta) nem de reescrever a lista inteira no editor de texto (Passo 5). Publicado como
+botoes de seta em cada entrega do card, ao lado do restante das informacoes da entrega.
+Como funciona: nao mexe em nenhuma funcao original - so embrulha window.render (mesma tecnica
+do PATCH_ANEXOSENTREGA) pra, depois de cada render, injetar um par de botoes de seta em cada
+'.erow' (usa o input[data-act="tog"] escondido em cada linha pra achar o id do motorista e o
+indice da entrega, igual o PATCH_ANEXOSENTREGA ja faz pro icone de anexo). Ao clicar, troca
+d.entregas[i] com d.entregas[i-1] (ou i+1), toca/salva (mesmo mecanismo de sempre - save()
+ja aciona marcarAlteracao() -> enviarAoServidor() sozinho, debounce de 1.8s) e chama render()
+de novo. Nao mexe em concluida/tempos (amarrados ao slug cliente+destino, nao a posicao na
+lista - mesma garantia documentada no PATCH_DISTANCIA_ENTREGAS) - so a ordem do array
+d.entregas muda. Funciona em qualquer entrega, concluida ou nao (controle manual completo).
+Pedido do dono, 03/09/2026: mesma opcao de reordenar tambem foi adicionada ao link individual
+do motorista (edicao direta e minima dentro do PATCH_LINK_MOTORISTA original - ver
+redesenharListaLM/arrowsPRE la dentro - nao dava pra embrulhar renderEntregaLM/telaLM de fora
+porque sao funcoes privadas do IIFE, mesma limitacao ja documentada no
+PATCH_LINK_MOTORISTA_AUTORETRY).
+Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mais muda. */
+(function(){
+  if (window.__PATCH_REORDENAR_ENTREGAS) return;
+  window.__PATCH_REORDENAR_ENTREGAS = "v1";
+
+  function moverEntregaPRE(driverId, i, dir){
+    var d = (typeof driver === "function") ? driver(driverId) : null;
+    if(!d || !Array.isArray(d.entregas)) return;
+    var j = i + dir;
+    if(j < 0 || j >= d.entregas.length) return;
+    var tmp = d.entregas[i];
+    d.entregas[i] = d.entregas[j];
+    d.entregas[j] = tmp;
+    if(typeof touch === "function") touch(d);
+    if(typeof save === "function") save();
+    if(typeof render === "function") render();
+  }
+
+  function injetarSetasPRE(){
+    document.querySelectorAll(".erow").forEach(function(row){
+      if(row.getAttribute("data-reordinj")) return;
+      var chk = row.querySelector('input[data-act="tog"]');
+      if(!chk) return;
+      var id = chk.getAttribute("data-id");
+      var i = parseInt(chk.getAttribute("data-i"), 10);
+      var d = (typeof driver === "function") ? driver(id) : null;
+      if(!d || !d.entregas || !d.entregas[i]) return;
+      row.setAttribute("data-reordinj", "1");
+      var total = d.entregas.length;
+      var col = document.createElement("div");
+      col.style.cssText = "display:flex;flex-direction:column;gap:0;flex-shrink:0";
+      var up = document.createElement("button");
+      up.className = "icobtn";
+      up.title = "Mover essa entrega pra cima (mais cedo na rota)";
+      up.textContent = "▲";
+      up.disabled = (i === 0);
+      up.style.opacity = (i === 0) ? ".3" : "1";
+      up.addEventListener("click", function(ev){ ev.stopPropagation(); moverEntregaPRE(id, i, -1); });
+      var down = document.createElement("button");
+      down.className = "icobtn";
+      down.title = "Mover essa entrega pra baixo (mais tarde na rota)";
+      down.textContent = "▼";
+      down.disabled = (i === total - 1);
+      down.style.opacity = (i === total - 1) ? ".3" : "1";
+      down.addEventListener("click", function(ev){ ev.stopPropagation(); moverEntregaPRE(id, i, 1); });
+      col.appendChild(up);
+      col.appendChild(down);
+      row.appendChild(col);
+    });
+  }
+  window.__injetarSetasReordenar = injetarSetasPRE;
+
+  var origRenderPRE = window.render;
+  if (typeof origRenderPRE === "function"){
+    window.render = function(){
+      var r = origRenderPRE.apply(this, arguments);
+      setTimeout(injetarSetasPRE, 20);
+      return r;
+    };
+  }
+  setInterval(injetarSetasPRE, 2000);
 })();
 </script>
