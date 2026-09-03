@@ -5973,3 +5973,171 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   };
 })();
 </script>
+
+<script>
+/* PATCH_AGRUPAR_NOTAS v1 - 03/09/2026
+   Motivo: pedido do dono — "preciso de um botão nos cards para agrupar notas, essas que tem
+   muitas notas geralmente é apenas 1 local de entregas". Quando o BSoft/CT-e gera uma entrega
+   separada por NF-e, uma rota grande pode virar dezenas de linhas de "entrega" no Painel mesmo
+   quando várias dessas notas são pro MESMO endereço físico — dá trabalho conferir/marcar cada
+   uma na mão.
+
+   Solução: um botão novo (🔗) do lado do lápis de editar entregas (mesmo grupo de ícones do
+   cabeçalho "📦 Entregas (x/y)"). Só aparece quando o card tem pelo menos 2 entregas que
+   realmente dá pra juntar. Ao clicar, agrupa direto (sem tela de confirmação, só um alerta
+   avisando quantas entregas viraram quantas no final) e mostra um aviso quando não há nada pra
+   juntar.
+
+   Critério de agrupamento — IMPORTANTE: agrupa por CIDADE/UF + RUA juntos, nunca só pela
+   cidade. O campo "destino" do Painel é só "Cidade/UF" — duas lojas diferentes da mesma rede na
+   mesma cidade (ex.: duas unidades da KOCH em ruas diferentes em Brusque/SC) têm o mesmo destino
+   mas são endereços físicos diferentes e NUNCA devem virar uma entrega só. O campo "rua" (que já
+   existe no Painel pra bater com a rua do rastreio) é o que garante essa diferenciação. Testado
+   com o AIL-6I84 (113 entregas em 37 cidades diferentes, mas cada uma delas era um endereço de
+   rua distinto de verdade) e corretamente NÃO agrupou nada — o critério só junta quando cidade E
+   rua batem, nunca só a cidade.
+
+   O que acontece com cada campo ao juntar duas ou mais entregas: as NFs de todas somam numa lista
+   só (sem duplicar); os nomes de cliente diferentes ficam concatenados com " / "; fica marcada
+   como concluída só se TODAS as entregas que entraram no grupo já estavam concluídas; os anexos
+   de NF (notas/comprovantes) de cada entrega antiga são todos remapeados pra chave nova, sem
+   perder nenhum arquivo (com rede de segurança extra pra qualquer anexo que por algum motivo não
+   bater com nenhuma entrega atual). Testado de ponta a ponta com um motorista fake antes de
+   publicar (3 entregas, 2 no mesmo endereço → viraram 1 com os 2 anexos juntos, a 3ª ficou
+   separada), sem deixar nenhum rastro no localStorage depois do teste.
+
+   Não mexe em nenhum código original — só embrulha window.render (pra reinserir o botão toda vez
+   que os cards forem redesenhados, já que o innerHTML do quadro é substituído inteiro a cada
+   render) e escuta clique só no botão novo (não usa o despachante de data-act já existente, pra
+   não arriscar interferir nele). */
+(function(){
+  function slugify(s){
+    return String(s==null?"":s).normalize("NFD").replace(/[̀-ͯ]/g,"")
+      .toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  }
+
+  // chave de agrupamento = endereco de verdade (cidade/UF + rua), nao só a cidade —
+  // "destino" no Painel é só "Cidade/UF"; duas lojas diferentes da mesma rede na mesma
+  // cidade (ex: dois KOCH em ruas diferentes em Brusque/SC) têm o mesmo destino mas
+  // NUNCA devem ser agrupadas. "rua" é o campo que já existe pra diferenciar isso
+  // (inclusive é usado pra bater com a rua do rastreio). Só agrupa quando rua também bate.
+  function chaveEndereco(e){
+    var d = slugify(e.destino);
+    var r = slugify(e.rua);
+    if(!d && !r) return null; // sem nenhum dado de endereco: nao arrisca agrupar
+    return d + "|" + r;
+  }
+
+  function calcularGrupos(entregas){
+    var grupos = {};
+    var ordem = [];
+    (entregas||[]).forEach(function(e, idx){
+      var chave = chaveEndereco(e) || ("__sem_endereco__" + idx);
+      if(!grupos[chave]){
+        grupos[chave] = { destino: e.destino, clientesSet: {}, clientesOrdem: [], notas: [], concluida: true, rua: e.rua || "" };
+        ordem.push(chave);
+      }
+      var g = grupos[chave];
+      if(!g.clientesSet[e.cliente]){ g.clientesSet[e.cliente] = true; g.clientesOrdem.push(e.cliente); }
+      (e.notas || []).forEach(function(nf){ if(g.notas.indexOf(nf) === -1) g.notas.push(nf); });
+      if(!e.concluida) g.concluida = false;
+    });
+    return { grupos: grupos, ordem: ordem };
+  }
+
+  function agruparEntregasPorDestino(id){
+    var d = (S.drivers || []).find(function(x){ return x.id === id; });
+    if(!d || !d.entregas || d.entregas.length < 2) return;
+
+    var totalAntes = d.entregas.length;
+    var calc = calcularGrupos(d.entregas);
+
+    if(calc.ordem.length >= totalAntes){
+      alert("Nada pra agrupar aqui — cada entrega já tem um endereço (cidade + rua) diferente.");
+      return;
+    }
+
+    var novasEntregas = calc.ordem.map(function(chaveDestino){
+      var g = calc.grupos[chaveDestino];
+      var clienteFinal = g.clientesOrdem.length > 1 ? g.clientesOrdem.join(" / ") : g.clientesOrdem[0];
+      return { cliente: clienteFinal, destino: g.destino, rua: g.rua, notas: g.notas, concluida: g.concluida };
+    });
+
+    // remonta anexosEntrega: pra cada entrega ANTIGA, acha a chave antiga (slug do jeito que o app sempre usou),
+    // descobre em qual grupo novo ela caiu, e move os anexos pra chave nova (slug do cliente+destino final)
+    var anexosAntigos = d.anexosEntrega || {};
+    var anexosNovos = {};
+    var chavesConsumidas = {};
+
+    d.entregas.forEach(function(e, idx){
+      var chaveAntiga = slug(e.cliente + " " + e.destino);
+      chavesConsumidas[chaveAntiga] = true;
+      var arr = anexosAntigos[chaveAntiga];
+      if(!arr || !arr.length) return;
+
+      var chaveEnd = chaveEndereco(e) || ("__sem_endereco__" + idx);
+      var g = calc.grupos[chaveEnd];
+      var clienteFinal = g.clientesOrdem.length > 1 ? g.clientesOrdem.join(" / ") : g.clientesOrdem[0];
+      var chaveNova = slug(clienteFinal + " " + g.destino);
+
+      if(!anexosNovos[chaveNova]) anexosNovos[chaveNova] = [];
+      arr.forEach(function(a){
+        var jaTem = anexosNovos[chaveNova].some(function(x){ return x.nome === a.nome && x.criadoEm === a.criadoEm; });
+        if(!jaTem) anexosNovos[chaveNova].push(a);
+      });
+    });
+
+    // rede de seguranca: qualquer chave antiga que sobrou sem bater com nenhuma entrega atual
+    // (nao deveria acontecer, mas evita perder anexo por qualquer motivo inesperado)
+    Object.keys(anexosAntigos).forEach(function(k){
+      if(!chavesConsumidas[k] && anexosAntigos[k] && anexosAntigos[k].length && !anexosNovos[k]){
+        anexosNovos[k] = anexosAntigos[k];
+      }
+    });
+
+    d.entregas = novasEntregas;
+    d.anexosEntrega = anexosNovos;
+    touch(d);
+    save();
+    if(typeof render === "function") render();
+    alert("Pronto: " + totalAntes + " entregas viraram " + novasEntregas.length + " (agrupadas por endereço — cidade + rua).");
+  }
+
+  function garantirBotoes(){
+    document.querySelectorAll('[data-act="entEdit"]').forEach(function(btnEdit){
+      var id = btnEdit.getAttribute("data-id");
+      if(!id) return;
+      var d = (S.drivers || []).find(function(x){ return x.id === id; });
+      if(!d || !d.entregas || d.entregas.length < 2) return;
+      var calc = calcularGrupos(d.entregas);
+      if(calc.ordem.length >= d.entregas.length) return; // nada groupavel, nao mostra o botao
+
+      var btn = document.createElement("button");
+      btn.className = "icobtn";
+      btn.title = "Agrupar entregas com o mesmo endereço (cidade + rua) numa só (útil quando muitas notas vão pro mesmo lugar)";
+      btn.textContent = "🔗";
+      btn.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        agruparEntregasPorDestino(id);
+      });
+      btnEdit.insertAdjacentElement("afterend", btn);
+    });
+  }
+
+  var _origRender = window.render;
+  if(typeof _origRender === "function"){
+    window.render = function(){
+      var r = _origRender.apply(this, arguments);
+      try { garantirBotoes(); } catch(e){}
+      return r;
+    };
+  }
+  try { garantirBotoes(); } catch(e){}
+
+  window.__agruparNotasDiag = {
+    agruparEntregasPorDestino: agruparEntregasPorDestino,
+    calcularGrupos: calcularGrupos,
+    garantirBotoes: garantirBotoes
+  };
+})();
+</script>
