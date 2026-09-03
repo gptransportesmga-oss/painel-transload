@@ -5761,3 +5761,215 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   };
 })();
 </script>
+
+<script>
+/* PATCH_ANEXOS_INDEXEDDB v1 - 03/09/2026
+   Motivo: localStorage do navegador tem limite de ~5MB por site (limite do proprio Chrome).
+   Anexos de NF/DANFE guardados como texto (base64) dentro do mesmo blob de d.anexosEntrega
+   passaram a estourar esse limite em rotas grandes (ex: uma rota com 143 notas passa de 5MB
+   sozinha) - a gravacao falha silenciosamente (QuotaExceededError engolido em algum try/catch)
+   e o anexo "aparece" na tela na hora mas nunca fica salvo de verdade, sumindo no primeiro F5
+   ou na proxima sincronizacao. Ver pendencias-e-descobertas.md, secao de 03/09 ("causa raiz
+   encontrada"), pra detalhe completo do diagnostico.
+
+   Solucao: qualquer anexo "grande" (acima de ~20KB de texto) tem o conteudo pesado (dataUrl)
+   guardado num banco IndexedDB local (limite de centenas de MB por site, praticamente nunca
+   estoura), e so uma referencia pequena (string curta) fica no localStorage e no quadro
+   compartilhado (Supabase) no lugar do texto gigante. EM MEMORIA, durante a sessao aberta, o
+   anexo continua com o dataUrl real o tempo todo - por isso NENHUMA outra parte do painel
+   precisa mudar (a tela de "Notas/comprovantes", o link do motorista, os botoes de abrir/
+   baixar - todos usam a.dataUrl como um link comum, que funciona igual com data:, blob: ou
+   http(s):). So embrulha save() e estadoLocal() (os dois pontos que realmente serializam o
+   quadro pra gravar/enviar): troca o conteudo pesado por uma referencia curta SO durante essas
+   duas chamadas (S.drivers/S.arquivo apontam pra uma copia saneada por um instante e voltam ao
+   normal logo em seguida - o quadro em memoria nunca perde o conteudo real). Ao carregar a
+   pagina e depois de cada puxarDoServidor(), troca de volta qualquer referencia pelo conteudo
+   real, lido do IndexedDB.
+
+   Limitacao importante, avisada ao dono antes de publicar: o IndexedDB e local de cada
+   computador/navegador. Um anexo salvo aqui NAO aparece automaticamente em outro computador
+   ate ser reaberto/reanexado la, ou ate o painel migrar pra Supabase Storage de verdade (hoje
+   fora do ar, ver pendencias-e-descobertas.md). Isso e o preco de resolver o problema sem
+   depender do Supabase estar saudavel agora.
+
+   Para desfazer: apagar este bloco (PATCH_ANEXOS_INDEXEDDB). Os anexos que ja estiverem com
+   referencia curta (marcador @@IDBANEXO@@...) vao aparecer com o link/miniatura vazios ate esse
+   bloco ser publicado de novo - por isso, se for desfazer, o ideal e antes reanexar de novo os
+   arquivos que dependem dele. */
+(function(){
+  var DB_NAME = 'painelAnexosIDB';
+  var STORE = 'blobs';
+  var LIMIAR = 20000; // ~20KB de texto: qualquer foto/PDF real de verdade passa disso
+  var MARCADOR = '@@IDBANEXO@@';
+
+  var dbPromise = null;
+  function abrirDB(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise(function(resolve, reject){
+      try {
+        var req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = function(){
+          req.result.createObjectStore(STORE, {keyPath: 'id'});
+        };
+        req.onsuccess = function(){ resolve(req.result); };
+        req.onerror = function(){ reject(req.error); };
+      } catch(e){ reject(e); }
+    });
+    return dbPromise;
+  }
+  function idbPut(id, dataUrl){
+    return abrirDB().then(function(db){
+      return new Promise(function(resolve, reject){
+        try {
+          var tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put({id: id, dataUrl: dataUrl});
+          tx.oncomplete = function(){ resolve(); };
+          tx.onerror = function(){ reject(tx.error); };
+        } catch(e){ reject(e); }
+      });
+    });
+  }
+  function idbGet(id){
+    return abrirDB().then(function(db){
+      return new Promise(function(resolve){
+        try {
+          var tx = db.transaction(STORE, 'readonly');
+          var req = tx.objectStore(STORE).get(id);
+          req.onsuccess = function(){ resolve(req.result ? req.result.dataUrl : null); };
+          req.onerror = function(){ resolve(null); };
+        } catch(e){ resolve(null); }
+      });
+    });
+  }
+
+  function idAnexo(driverId, chave, a){
+    return String(driverId) + '::' + String(chave) + '::' + String(a.nome||'') + '::' + String(a.criadoEm||'');
+  }
+
+  var jaGravados = {};
+  var idbDisponivel = (typeof indexedDB !== 'undefined');
+
+  function sanearListaDrivers(lista){
+    if(!idbDisponivel) return lista;
+    return (lista||[]).map(function(d){
+      if(!d || !d.anexosEntrega) return d;
+      var mudou = false;
+      var novoAnexos = {};
+      Object.keys(d.anexosEntrega).forEach(function(chave){
+        var arr = d.anexosEntrega[chave] || [];
+        novoAnexos[chave] = arr.map(function(a){
+          if(!a || typeof a.dataUrl !== 'string' || a.dataUrl.length <= LIMIAR || a.dataUrl.indexOf(MARCADOR) === 0){
+            return a;
+          }
+          mudou = true;
+          var id = idAnexo(d.id, chave, a);
+          if(!jaGravados[id]){
+            jaGravados[id] = true;
+            idbPut(id, a.dataUrl).catch(function(){ jaGravados[id] = false; });
+          }
+          var clone = {};
+          for(var kk in a) if(Object.prototype.hasOwnProperty.call(a,kk)) clone[kk] = a[kk];
+          clone.dataUrl = MARCADOR + id;
+          return clone;
+        });
+      });
+      if(!mudou) return d;
+      var novo = {};
+      for(var k in d) if(Object.prototype.hasOwnProperty.call(d,k)) novo[k] = d[k];
+      novo.anexosEntrega = novoAnexos;
+      return novo;
+    });
+  }
+
+  var _origSave = window.save;
+  if(typeof _origSave === 'function'){
+    window.save = function(){
+      var savedDrivers = (typeof S !== 'undefined') ? S.drivers : null;
+      var savedArquivo = (typeof S !== 'undefined') ? S.arquivo : null;
+      try {
+        if(typeof S !== 'undefined'){
+          S.drivers = sanearListaDrivers(S.drivers);
+          S.arquivo = sanearListaDrivers(S.arquivo);
+        }
+        return _origSave.apply(this, arguments);
+      } finally {
+        if(typeof S !== 'undefined'){
+          S.drivers = savedDrivers;
+          S.arquivo = savedArquivo;
+        }
+      }
+    };
+  }
+
+  var _origEstadoLocal = window.estadoLocal;
+  if(typeof _origEstadoLocal === 'function'){
+    window.estadoLocal = function(){
+      var savedDrivers = (typeof S !== 'undefined') ? S.drivers : null;
+      var savedArquivo = (typeof S !== 'undefined') ? S.arquivo : null;
+      try {
+        if(typeof S !== 'undefined'){
+          S.drivers = sanearListaDrivers(S.drivers);
+          S.arquivo = sanearListaDrivers(S.arquivo);
+        }
+        return _origEstadoLocal.apply(this, arguments);
+      } finally {
+        if(typeof S !== 'undefined'){
+          S.drivers = savedDrivers;
+          S.arquivo = savedArquivo;
+        }
+      }
+    };
+  }
+
+  function hidratarLista(lista){
+    var promessas = [];
+    (lista||[]).forEach(function(d){
+      if(!d || !d.anexosEntrega) return;
+      Object.keys(d.anexosEntrega).forEach(function(chave){
+        (d.anexosEntrega[chave]||[]).forEach(function(a){
+          if(a && typeof a.dataUrl === 'string' && a.dataUrl.indexOf(MARCADOR) === 0){
+            var id = a.dataUrl.slice(MARCADOR.length);
+            promessas.push(idbGet(id).then(function(real){
+              if(real){
+                a.dataUrl = real;
+              } else {
+                a.dataUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+                if(String(a.nome||'').indexOf('(salvo em outro computador)') === -1){
+                  a.nome = (a.nome||'anexo') + ' (salvo em outro computador)';
+                }
+              }
+            }));
+          }
+        });
+      });
+    });
+    return Promise.all(promessas);
+  }
+
+  function hidratarTudo(){
+    if(typeof S === 'undefined') return Promise.resolve();
+    return Promise.all([hidratarLista(S.drivers), hidratarLista(S.arquivo)]);
+  }
+
+  if(idbDisponivel){
+    hidratarTudo().then(function(){ if(typeof render === 'function') render(); }).catch(function(){});
+  }
+
+  var _origPuxar = window.puxarDoServidor;
+  if(typeof _origPuxar === 'function'){
+    window.puxarDoServidor = async function(){
+      var r = await _origPuxar.apply(this, arguments);
+      if(idbDisponivel){
+        try { await hidratarTudo(); if(typeof render === 'function') render(); } catch(e){}
+      }
+      return r;
+    };
+  }
+
+  window.__anexosIdbDiag = {
+    abrirDB: abrirDB, idbGet: idbGet, idbPut: idbPut,
+    sanearListaDrivers: sanearListaDrivers, hidratarTudo: hidratarTudo,
+    MARCADOR: MARCADOR, LIMIAR: LIMIAR, idbDisponivel: idbDisponivel
+  };
+})();
+</script>
