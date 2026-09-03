@@ -5723,3 +5723,41 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   setInterval(injetarSetasPRE, 2000);
 })();
 </script>
+
+
+<script>
+/* PATCH_MERGE_PRESERVA_LINKMOTORISTA v1 (03/09/2026) - correcao pro bug 'link do motorista fica
+   invalido depois que alguem edita o painel'. Causa raiz: mesclarQuadro() troca o motorista
+   INTEIRO pela copia com updatedAt mais recente (nao mescla campo a campo) - entao se o dono
+   gera o link (grava d.linkMotorista) e, pouco depois, outra aba/sessao salva sua propria copia
+   do mesmo motorista (sem saber que o link existia), essa gravacao mais nova apaga o
+   d.linkMotorista de volta, e o link ja compartilhado com o motorista para de bater com o
+   token salvo (Link invalido). Este patch embrulha window.mesclarQuadro (funcao original,
+   nao mexe em nada dela) e, depois que ela decide qual copia de cada motorista venceu, so
+   RECOLOCA o d.linkMotorista se a copia vencedora ficou sem ele mas a outra copia (local ou
+   remota) tinha - nunca sobrescreve um linkMotorista que ja existe na vencedora, nunca mexe em
+   mais nenhum campo. Documentado em claude/pendencias-e-descobertas.md (projeto PAINEL DE
+   VIAGENS). Para desfazer: apagar este bloco inteiro - o comportamento volta a ser o de antes. */
+(function () {
+  if (window.__PATCH_MERGE_PRESERVA_LINKMOTORISTA) return;
+  window.__PATCH_MERGE_PRESERVA_LINKMOTORISTA = "v1";
+  var mesclarQuadroOriginal = window.mesclarQuadro;
+  if (typeof mesclarQuadroOriginal !== "function") return;
+  window.mesclarQuadro = function (local, remoto) {
+    var resultado = mesclarQuadroOriginal(local, remoto);
+    try {
+      var porIdLocal = {}, porIdRemoto = {};
+      (local && local.motoristas || []).forEach(function (d) { if (d && d.id) porIdLocal[d.id] = d; });
+      (remoto && remoto.motoristas || []).forEach(function (d) { if (d && d.id) porIdRemoto[d.id] = d; });
+      (resultado.motoristas || []).forEach(function (d) {
+        if (d && !d.linkMotorista) {
+          var outroLocal = porIdLocal[d.id], outroRemoto = porIdRemoto[d.id];
+          if (outroLocal && outroLocal.linkMotorista) d.linkMotorista = outroLocal.linkMotorista;
+          else if (outroRemoto && outroRemoto.linkMotorista) d.linkMotorista = outroRemoto.linkMotorista;
+        }
+      });
+    } catch (e) {}
+    return resultado;
+  };
+})();
+</script>
