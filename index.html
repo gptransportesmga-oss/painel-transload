@@ -5528,7 +5528,7 @@ function renderEntregaLM(container, d, idx, ov) {
           if (box) box.remove();
           return;
         }
-        var assinatura = lista.map(function(a){ return (a.nome||'') + '|' + (a.criadoEm||''); }).join(',');
+        var assinatura = lista.map(function(a){ return (a.nome||'') + '|' + (a.criadoEm||'') + '|' + ((a.dataUrl||'').indexOf('@@IDBANEXO@@')===0?'PEND':'OK'); }).join(',');
         if (box && box.dataset.assinatura === assinatura) return;
         if (!box) {
           box = document.createElement('div');
