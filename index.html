@@ -3107,6 +3107,23 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     if(file.type && file.type.indexOf("image/")===0){
       var reader = new FileReader();
       reader.onload = function(){
+        var origDataUrlLA = reader.result;
+        function usarOriginalSemCompressaoLA(){
+          /* PATCH_ANEXO_FOTO_FALLBACK v1 (08/09/2026): quando o navegador nao consegue decodificar
+             a imagem (ex.: foto HEIC do iPhone, arquivo corrompido na captura pela camera do
+             motorista), o canvas/Image falhava em silencio (cb(null)) sem nenhum aviso - o
+             motorista tirava foto, nada acontecia, e ninguem ficava sabendo. Agora sobe o arquivo
+             ORIGINAL sem recomprimir (mesmo mecanismo de upload de sempre) e, se isso tambem
+             falhar, avisa com alert() em vez de falhar calado. */
+          uploadAnexoStorage(origDataUrlLA, file.name||"foto").then(function(urlSalvoLA){
+            if(!urlSalvoLA){
+              try { alert("Nao consegui anexar essa foto (formato nao suportado ou falha de conexao). Tente tirar outra foto ou escolher outro arquivo."); } catch(eAlertLA){}
+              cb(null);
+              return;
+            }
+            cb({ nome: file.name||"foto", tipo: file.type||"image/jpeg", dataUrl: urlSalvoLA, criadoEm: Date.now() });
+          });
+        }
         var img = new Image();
         img.onload = function(){
           var maxDim = 1280;
@@ -3119,13 +3136,13 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
           ctx.drawImage(img,0,0,cw,ch);
           var dataUrl;
           try { dataUrl = canvas.toDataURL("image/jpeg", 0.72); } catch(e){ dataUrl = null; }
-          if(!dataUrl){ cb(null); return; }
+          if(!dataUrl){ usarOriginalSemCompressaoLA(); return; }
           uploadAnexoStorage(dataUrl, file.name||"foto.jpg").then(function(urlSalvo){ cb({ nome: file.name||"foto.jpg", tipo:"image/jpeg", dataUrl: urlSalvo||dataUrl, criadoEm: Date.now() }); });
         };
-        img.onerror = function(){ cb(null); };
-        img.src = reader.result;
+        img.onerror = function(){ usarOriginalSemCompressaoLA(); };
+        img.src = origDataUrlLA;
       };
-      reader.onerror = function(){ cb(null); };
+      reader.onerror = function(){ try{ alert("Nao consegui ler esse arquivo. Tente novamente."); }catch(e){} cb(null); };
       reader.readAsDataURL(file);
     } else {
       var reader2 = new FileReader();
