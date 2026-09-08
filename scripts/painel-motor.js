@@ -649,7 +649,7 @@ function rodarMotor(dados, mapeados) {
   const permanecem = [];
     drivers.forEach((d) => {
           if (d.status === 'finalizado' && d.updatedAt && (agora - d.updatedAt) >= ARQUIVA_APOS_MS) {
-                  dados.placasEncerradas[normalizePlaca(d.placa)] = agora;
+                  if (d.bsoftAberto === true) { eventos.push(d.placa + ': nao removida - BSoft ainda mostra MDFe em aberto (bsoftAberto=true), aguardando ciclo BSoft'); permanecem.push(d); return; } dados.placasEncerradas[normalizePlaca(d.placa)] = agora;
                   eventos.push(d.placa + ': removida do painel (finalizada ha 5+ min, dados ja estao no BSoft)');
           } else {
                   permanecem.push(d);
