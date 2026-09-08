@@ -4804,7 +4804,7 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
   if (window.__PATCH_LINK_MOTORISTA) return;
   window.__PATCH_LINK_MOTORISTA = "v1";
 
-  var VALIDADE_MS = 5 * 24 * 60 * 60 * 1000; // 5 dias
+  var VALIDADE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias -- backstop de seguranca; o vencimento normal agora e quando a viagem termina (ver ativarModoMotoristaLM)
 
   var _origStatusAutoLM = statusAutomatico;
   window.statusAutomatico = function (d) {
