@@ -19,7 +19,7 @@
    sessionStorage evita loop) navegando pra uma URL com parametro novo (forca buscar a versao
    atual). So dispara na entrada de uma sessao/aba nova - nao fica checando toda hora, entao nao
    interrompe ninguem no meio de um uso ja em andamento. */
-window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:29:47Z";
+window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
 (function(){
   try {
     if (sessionStorage.getItem("__autoUpdateCheckedPainel")) return;
@@ -1502,26 +1502,19 @@ async function sbGravar(c, dados){
     body: JSON.stringify(corpo) });
   if(!r.ok){ const t = await r.text().catch(()=> ""); throw new Error("HTTP " + r.status + " ao gravar " + t.slice(0,120)); }
 }
-/* PATCH_MERGE_UNIAO_ANEXOS v1 (08/09/2026): o merge acima decide, por motorista inteiro,
-   qual copia (local ou remota) "vence" comparando d.updatedAt - e joga fora TODOS os campos do
-   lado perdedor, anexosEntrega incluido. Isso derrubava fotos reais: se uma pessoa no escritorio
-   estava com o painel aberto ha um tempo (copia local dela desatualizada, sem a foto nova que um
-   motorista acabou de anexar pelo link) e fazia qualquer acao que dispare um envio - mesmo sem
-   mexer nesse motorista - o touch() daquela acao podia deixar o updatedAt da copia DELA mais
-   novo que o do motorista no servidor, e o proximo envio dela apagava a foto que tinha acabado
-   de ser salva (o "some depois de atualizar" que o dono continuava vendo mesmo depois da
-   correcao PATCH_ANEXO_FIX_REF_ORFA). Solucao: alem de escolher o "vencedor" pros outros campos
-   (like antes), a lista de anexos de cada entrega agora e sempre a UNIAO dos dois lados (local +
-   remoto, sem duplicar) - nunca so a do vencedor. Assim nenhuma foto se perde so por causa de
-   outra aba/pessoa com dado desatualizado. */
-/* PATCH_ANEXO_REMOCAO_SUAVE v1 (08/09/2026): a uniao abaixo (PATCH_MERGE_UNIAO_ANEXOS) impedia
-   perder foto nova por causa de sessao desatualizada, mas como efeito colateral tambem impedia
-   uma REMOCAO de colar de vez - bastava uma copia antiga (de outra aba/pull) ainda ter o item
-   pra ele "ressuscitar" na proxima uniao. Solucao: remover um anexo agora so marca ele como
-   removido (removido:true, removidoEm), sem tirar do array - e a uniao, quando ve a MESMA foto
-   dos dois lados com uma copia marcada removida, mantem a copia removida (a remocao "gruda").
-   Quem exibe/conta anexos pro usuario sempre filtra os marcados como removido - ver
-   anexosVisiveis() logo abaixo. */
+/* PATCH_ANEXO_REMOCAO_SUAVE v1 (08/09/2026): funcoes usadas pela protecao de anexos contra
+   sessao desatualizada (ver o wrapper de mesclarQuadro mais abaixo, no mesmo estilo do
+   PATCH_MERGE_PRESERVA_LINKMOTORISTA - NAO da pra mexer direto na funcao mesclarQuadro aqui
+   embaixo, porque patches mais abaixo no arquivo, como PATCH_MERGE_RECENCIA, SUBSTITUEM
+   window.mesclarQuadro inteiro, e qualquer edicao feita direto nela seria descartada sem
+   nenhum aviso). anexosVisiveis() filtra os anexos marcados como removido (usado em toda tela
+   que mostra/conta anexo). unirAnexosEntrega() combina os anexos de duas copias (local + 
+   remota) de um motorista sem duplicar - se a MESMA foto aparecer removida numa copia e nao
+   removida na outra, a remocao "gruda" (fica removida no resultado). Isso existe pra dois
+   problemas reais encontrados testando ao vivo: 1) uma sessao com o painel aberto ha muito
+   tempo, com dado desatualizado, podia sobrescrever/apagar uma foto nova anexada por outra
+   sessao/link nesse meio tempo; 2) sem o "removido" grudar, uma foto apagada podia voltar
+   sozinha se alguma copia antiga (de outra aba) ainda tivesse ela sem a marca de removida. */
 function anexosVisiveis(lista){
   return (lista||[]).filter(function(a){ return !(a && a.removido); });
 }
@@ -1552,17 +1545,7 @@ function mesclarQuadro(local, remoto){
   (remoto.motoristas||[]).forEach(d=>{ porId[d.id] = d; });
   (local.motoristas||[]).forEach(d=>{
     const r = porId[d.id];
-    if(!r){ porId[d.id] = d; return; }
-    const vencedor = (d.updatedAt||0) >= (r.updatedAt||0) ? d : r;
-    const anexosUnidos = unirAnexosEntrega(r.anexosEntrega, d.anexosEntrega);
-    var mesclado = vencedor;
-    for (var kk in anexosUnidos){ if(Object.prototype.hasOwnProperty.call(anexosUnidos,kk)){ mesclado = null; break; } }
-    if (mesclado === null){
-      mesclado = {};
-      for (var kchave in vencedor) if (Object.prototype.hasOwnProperty.call(vencedor,kchave)) mesclado[kchave] = vencedor[kchave];
-      mesclado.anexosEntrega = anexosUnidos;
-    }
-    porId[d.id] = mesclado;
+    if(!r || (d.updatedAt||0) >= (r.updatedAt||0)) porId[d.id] = d;
   });
   const arq = {};
   [].concat(remoto.historico||[], local.historico||[]).forEach(h=>{ if(h && h.id) arq[h.id] = h; });
@@ -1598,33 +1581,14 @@ async function puxarDoServidor(){
   save(); render();
   salvandoDoServidor = false;
 }
-/* PATCH_ENVIO_PROTEGE_ANEXOS v1 (08/09/2026): antes desse patch, um envio so protegia anexos
-   contra sobrescrita se um pull (puxarDoServidor, que roda ao abrir a pagina e a cada alguns
-   segundos) tivesse rodado recentemente o bastante pra unir os anexos (PATCH_MERGE_UNIAO_ANEXOS).
-   Uma aba aberta ha muito tempo, sem dar F5, mexendo em qualquer outra coisa (ex: reordenar outro
-   motorista, marcar uma entrega), podia disparar um envio que carregava uma foto anexada por
-   outra sessao/link nesse meio tempo - MESMO com a uniao no merge, porque enviarAoServidor nunca
-   buscava o servidor antes de gravar. Agora TODO envio busca o estado atual do servidor primeiro
-   e uneme os anexos de cada entrega (local + servidor) antes de gravar - nenhum envio, de nenhuma
-   sessao, em nenhum momento, consegue mais apagar uma foto por acidente. Se a checagem falhar
-   (sem internet etc), segue enviando o que tem local mesmo assim, sem travar o painel. */
 async function enviarAoServidor(){
+  /* nota: o "puxar antes de empurrar" que protege contra sessao desatualizada ja acontece no
+     PATCH_SYNC_SEGURO (embrulha esta funcao e chama puxarDoServidor() antes de mandar), que por
+     sua vez usa mesclarQuadro() - protegida contra perder anexo pelo wrapper perto do
+     PATCH_MERGE_PRESERVA_LINKMOTORISTA, mais abaixo. Nao duplicar a busca aqui. */
   const c = lerSync();
   if(!syncLigado()) return;
   if(S.maquinaNova) return;
-  try {
-    const linhaAgora = await sbLer(c);
-    if (linhaAgora && linhaAgora.dados && Array.isArray(linhaAgora.dados.motoristas) && typeof unirAnexosEntrega === "function") {
-      const remotosPorId = {};
-      linhaAgora.dados.motoristas.forEach(function(rd){ if(rd && rd.id) remotosPorId[rd.id] = rd; });
-      (S.drivers||[]).forEach(function(ld){
-        var rd = ld && remotosPorId[ld.id];
-        if (rd && (rd.anexosEntrega || ld.anexosEntrega)) {
-          ld.anexosEntrega = unirAnexosEntrega(rd.anexosEntrega, ld.anexosEntrega);
-        }
-      });
-    }
-  } catch(ePreUniaoEnvio){ /* checagem falhou - segue enviando normal, nao trava o painel */ }
   await sbGravar(c, estadoLocal());
   ultimoEnvioNosso = Date.now() + 1500;
   ultimoSyncOk = Date.now();
@@ -5946,6 +5910,53 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
         }
       });
     } catch (e) {}
+    return resultado;
+  };
+})();
+</script>
+
+<script>
+/* PATCH_MERGE_UNIAO_ANEXOS v2 (08/09/2026) - achado testando ao vivo o pedido "arruma isso
+   urgente" sobre foto de comprovante sumindo: mesclarQuadro() decide, por motorista INTEIRO,
+   qual copia (local ou remota) "vence" comparando updatedAt - jogando fora TODOS os campos do
+   lado perdedor, anexosEntrega incluido. Isso derrubava fotos reais: uma sessao com o painel
+   aberto ha um tempo (copia local desatualizada, sem uma foto nova que acabou de ser anexada
+   por outra sessao/link) podia, ao fazer qualquer acao que dispare um envio - mesmo sem mexer
+   nesse motorista - deixar sua copia "vencedora" no proximo merge, apagando a foto.
+   IMPORTANTE: a 1a versao desta correcao editava a funcao mesclarQuadro() la em cima do
+   arquivo direto - mas patches mais antigos (PATCH_MERGE_RECENCIA, mais os embrulhos de
+   PATCH_DEDUP_PLACA e do bloqueio por token) SUBSTITUEM window.mesclarQuadro inteiro depois
+   dela, entao a edicao direta ficava morta (nunca rodava de verdade - so descoberto testando
+   uma remocao de foto ao vivo e vendo ela "ressuscitar"). Corrigido do jeito certo: embrulha
+   window.mesclarQuadro (o que ela for NESTE PONTO do arquivo - depois de todo mundo, igual o
+   PATCH_MERGE_PRESERVA_LINKMOTORISTA um pouco acima) e, depois que ela decide o vencedor de
+   cada motorista, SUBSTITUI so o anexosEntrega da entrega pela uniao (unirAnexosEntrega(),
+   definida perto do topo do arquivo) das copias local e remota - nunca mexe em mais nenhum
+   campo. unirAnexosEntrega() tambem respeita remocao (PATCH_ANEXO_REMOCAO_SUAVE): se a MESMA
+   foto aparecer removida numa copia e nao removida na outra, a remocao "gruda" no resultado -
+   sem isso, apagar uma foto nunca colava de vez (uma copia antiga em outra aba trazia ela de
+   volta no proximo sincronismo). */
+(function () {
+  if (window.__PATCH_MERGE_UNIAO_ANEXOS_V2) return;
+  window.__PATCH_MERGE_UNIAO_ANEXOS_V2 = "v2";
+  var mesclarQuadroBaseAnexos = window.mesclarQuadro;
+  if (typeof mesclarQuadroBaseAnexos !== "function" || typeof unirAnexosEntrega !== "function") return;
+  window.mesclarQuadro = function (local, remoto) {
+    var resultado = mesclarQuadroBaseAnexos(local, remoto);
+    try {
+      var porIdLocalAnx = {}, porIdRemotoAnx = {};
+      (local && local.motoristas || []).forEach(function (d) { if (d && d.id) porIdLocalAnx[d.id] = d; });
+      (remoto && remoto.motoristas || []).forEach(function (d) { if (d && d.id) porIdRemotoAnx[d.id] = d; });
+      (resultado.motoristas || []).forEach(function (d) {
+        if (!d || !d.id) return;
+        var lAnx = porIdLocalAnx[d.id], rAnx = porIdRemotoAnx[d.id];
+        if (!lAnx && !rAnx) return;
+        var anexosUnidos = unirAnexosEntrega(rAnx && rAnx.anexosEntrega, lAnx && lAnx.anexosEntrega);
+        var temAlgumaChave = false;
+        for (var kkAnx in anexosUnidos) { if (Object.prototype.hasOwnProperty.call(anexosUnidos, kkAnx)) { temAlgumaChave = true; break; } }
+        if (temAlgumaChave) d.anexosEntrega = anexosUnidos;
+      });
+    } catch (eMergeAnexosV2) { /* nao trava o painel se algo der errado aqui */ }
     return resultado;
   };
 })();
