@@ -5015,9 +5015,15 @@ function renderEntregaLM(container, d, idx, ov) {
     aguardarDadosLM(0, function (ok) {
       if (!ok) { telaLM(ov, '⚠️', 'Não conseguimos carregar os dados agora. Tente atualizar a página em instantes.'); return; }
       var d = (typeof driver === 'function') ? driver(__motIdLM) : (S.drivers || []).find(function (x) { return x.id === __motIdLM; });
-      if (!d) { telaLM(ov, '⚠️', 'Não encontramos essa viagem. Peça um link novo à central.'); return; }
+      if (!d) {
+        var arquivadoLM = (S.arquivo || []).find(function (x) { return x.id === __motIdLM && x.linkMotorista && x.linkMotorista.chave === __motTokLM; });
+        if (arquivadoLM) { telaLM(ov, '✅', 'Viagem já finalizada — obrigado! Se precisar de um link novo, peça à central.'); return; }
+        telaLM(ov, '⚠️', 'Não encontramos essa viagem. Peça um link novo à central.'); return;
+      }
       if (!d.linkMotorista || d.linkMotorista.chave !== __motTokLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
-      if (Date.now() - d.linkMotorista.criadoEm > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou (validade de 5 dias). Peça um link novo à central.'); return; }
+      var todasConcluidasLM = !!(d.entregas && d.entregas.length && d.entregas.every(function (e) { return e && e.concluida; }));
+      if (d.status === 'finalizado' || todasConcluidasLM) { telaLM(ov, '✅', 'Viagem finalizada — obrigado! Se precisar de um link novo, peça à central.'); return; }
+      if (Date.now() - d.linkMotorista.criadoEm > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou. Peça um link novo à central.'); return; }
 
       ov.innerHTML = '';
       var header = document.createElement('div');
