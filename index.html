@@ -19,7 +19,7 @@
    sessionStorage evita loop) navegando pra uma URL com parametro novo (forca buscar a versao
    atual). So dispara na entrada de uma sessao/aba nova - nao fica checando toda hora, entao nao
    interrompe ninguem no meio de um uso ja em andamento. */
-window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:08:24Z";
+window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:16:19Z";
 (function(){
   try {
     if (sessionStorage.getItem("__autoUpdateCheckedPainel")) return;
@@ -1502,12 +1502,55 @@ async function sbGravar(c, dados){
     body: JSON.stringify(corpo) });
   if(!r.ok){ const t = await r.text().catch(()=> ""); throw new Error("HTTP " + r.status + " ao gravar " + t.slice(0,120)); }
 }
+/* PATCH_MERGE_UNIAO_ANEXOS v1 (08/09/2026): o merge acima decide, por motorista inteiro,
+   qual copia (local ou remota) "vence" comparando d.updatedAt - e joga fora TODOS os campos do
+   lado perdedor, anexosEntrega incluido. Isso derrubava fotos reais: se uma pessoa no escritorio
+   estava com o painel aberto ha um tempo (copia local dela desatualizada, sem a foto nova que um
+   motorista acabou de anexar pelo link) e fazia qualquer acao que dispare um envio - mesmo sem
+   mexer nesse motorista - o touch() daquela acao podia deixar o updatedAt da copia DELA mais
+   novo que o do motorista no servidor, e o proximo envio dela apagava a foto que tinha acabado
+   de ser salva (o "some depois de atualizar" que o dono continuava vendo mesmo depois da
+   correcao PATCH_ANEXO_FIX_REF_ORFA). Solucao: alem de escolher o "vencedor" pros outros campos
+   (like antes), a lista de anexos de cada entrega agora e sempre a UNIAO dos dois lados (local +
+   remoto, sem duplicar) - nunca so a do vencedor. Assim nenhuma foto se perde so por causa de
+   outra aba/pessoa com dado desatualizado. */
+function unirAnexosEntrega(anexosA, anexosB){
+  var chaves = {};
+  Object.keys(anexosA||{}).forEach(function(k){ chaves[k] = 1; });
+  Object.keys(anexosB||{}).forEach(function(k){ chaves[k] = 1; });
+  var resultado = {};
+  Object.keys(chaves).forEach(function(chave){
+    var listaA = (anexosA && anexosA[chave]) || [];
+    var listaB = (anexosB && anexosB[chave]) || [];
+    var vistos = {};
+    var combinada = [];
+    listaA.concat(listaB).forEach(function(item){
+      if(!item) return;
+      var idItem = String(item.nome||"") + "::" + String(item.criadoEm||"") + "::" + String((item.dataUrl||"").slice(0,80));
+      if(vistos[idItem]) return;
+      vistos[idItem] = true;
+      combinada.push(item);
+    });
+    if(combinada.length) resultado[chave] = combinada;
+  });
+  return resultado;
+}
 function mesclarQuadro(local, remoto){
   const porId = {};
   (remoto.motoristas||[]).forEach(d=>{ porId[d.id] = d; });
   (local.motoristas||[]).forEach(d=>{
     const r = porId[d.id];
-    if(!r || (d.updatedAt||0) >= (r.updatedAt||0)) porId[d.id] = d;
+    if(!r){ porId[d.id] = d; return; }
+    const vencedor = (d.updatedAt||0) >= (r.updatedAt||0) ? d : r;
+    const anexosUnidos = unirAnexosEntrega(r.anexosEntrega, d.anexosEntrega);
+    var mesclado = vencedor;
+    for (var kk in anexosUnidos){ if(Object.prototype.hasOwnProperty.call(anexosUnidos,kk)){ mesclado = null; break; } }
+    if (mesclado === null){
+      mesclado = {};
+      for (var kchave in vencedor) if (Object.prototype.hasOwnProperty.call(vencedor,kchave)) mesclado[kchave] = vencedor[kchave];
+      mesclado.anexosEntrega = anexosUnidos;
+    }
+    porId[d.id] = mesclado;
   });
   const arq = {};
   [].concat(remoto.historico||[], local.historico||[]).forEach(h=>{ if(h && h.id) arq[h.id] = h; });
