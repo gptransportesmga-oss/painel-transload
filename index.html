@@ -4,6 +4,37 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Painel de Viagens — TRANSLOAD</title>
+<script>
+/* PATCH_AUTOATUALIZA_VERSAO v1 (08/09/2026) - o GitHub Pages serve este arquivo com
+   Cache-Control: max-age=600 (10 minutos) e nao da pra mudar isso (hospedagem estatica, sem
+   controle de headers do lado do servidor). Isso significa que depois de publicar uma correcao,
+   qualquer pessoa (motorista no link, ou o escritorio) que ja tinha aberto essa MESMA URL nos
+   ultimos 10 minutos continua rodando o JS ANTIGO mesmo dando "atualizar" na pagina - atualizar
+   normal (sem forcar cache) respeita o cache do navegador e nao busca nada novo do servidor.
+   Achado real (08/09/2026): a correcao de anexo de foto (PATCH_ANEXO_SYNC_IMEDIATO) nao chegava
+   no celular do dono mesmo minutos depois de publicada, porque o link dele ja estava em cache.
+   Este patch roda cedo, em segundo plano (nao trava a pagina), busca a versao publicada agora
+   (fetch com cache:"no-store", ignora o cache do navegador de verdade) e compara com a versao
+   que esta rodando nesta aba. Se forem diferentes, recarrega automaticamente UMA VEZ (flag em
+   sessionStorage evita loop) navegando pra uma URL com parametro novo (forca buscar a versao
+   atual). So dispara na entrada de uma sessao/aba nova - nao fica checando toda hora, entao nao
+   interrompe ninguem no meio de um uso ja em andamento. */
+window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T18:55:00Z";
+(function(){
+  try {
+    if (sessionStorage.getItem("__autoUpdateCheckedPainel")) return;
+    sessionStorage.setItem("__autoUpdateCheckedPainel", "1");
+    fetch(location.pathname, { cache: "no-store" }).then(function(r){ return r.text(); }).then(function(txt){
+      var m = txt.match(/__VERSAO_PUBLICADA_PAINEL__\s*=\s*["']([^"']+)["']/);
+      if (m && m[1] && m[1] !== window.__VERSAO_PUBLICADA_PAINEL__) {
+        var url = new URL(location.href);
+        url.searchParams.set("_v", Date.now());
+        location.replace(url.toString());
+      }
+    }).catch(function(){});
+  } catch (e) {}
+})();
+</script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
   :root{
