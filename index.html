@@ -19,7 +19,7 @@
    sessionStorage evita loop) navegando pra uma URL com parametro novo (forca buscar a versao
    atual). So dispara na entrada de uma sessao/aba nova - nao fica checando toda hora, entao nao
    interrompe ninguem no meio de um uso ja em andamento. */
-window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T18:55:00Z";
+window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:08:24Z";
 (function(){
   try {
     if (sessionStorage.getItem("__autoUpdateCheckedPainel")) return;
@@ -3247,8 +3247,19 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
         del.className = "mini";
         del.title = "Remover";
         del.addEventListener("click", function(){
-          lista.splice(idx,1);
-          if (typeof touch === "function") touch(d);
+          /* PATCH_ANEXO_FIX_REF_ORFA v1 (08/09/2026): busca a referencia atual do motorista de
+             novo aqui (pode ter sido trocada por uma sincronizacao em segundo plano desde que o
+             modal foi aberto) - evita apagar/gravar numa copia orfa que nunca chega no servidor.
+             Ver mesma nota no listener de "change" abaixo. */
+          var dAtualDel = (typeof driver === "function") ? (driver(driverId) || d) : d;
+          d = dAtualDel;
+          window.__anexoAtual.d = dAtualDel;
+          dAtualDel.anexosEntrega = dAtualDel.anexosEntrega || {};
+          var listaAtualDel = dAtualDel.anexosEntrega[key] || (dAtualDel.anexosEntrega[key] = []);
+          var posDel = listaAtualDel.indexOf(a);
+          if (posDel === -1) posDel = idx;
+          if (posDel > -1) listaAtualDel.splice(posDel,1);
+          if (typeof touch === "function") touch(dAtualDel);
           if (typeof save === "function") save();
           try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
           desenhar();
@@ -3280,6 +3291,21 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       Array.prototype.forEach.call(files, function(file){
         lerArquivo(file, function(item){
           if(item){
+            /* PATCH_ANEXO_FIX_REF_ORFA v1 (08/09/2026): entre o clique em "tirar foto" e este
+               callback existe um intervalo assincrono real (leitura do arquivo + compressao +
+               upload da foto pra nuvem, que pode levar alguns segundos numa conexao fraca).
+               Nesse intervalo, uma sincronizacao em segundo plano (puxarDoServidor, que roda ao
+               abrir a pagina e a cada 60s) pode trocar o objeto deste motorista dentro de
+               S.drivers por uma copia vinda do servidor. O modal guardava so a referencia antiga
+               (d) capturada ao abrir - anexar a foto nela a deixava "orfa", fora de S.drivers, e
+               o proximo salvar/enviar nunca via essa foto (mesmo mostrando "Salvo" na tela, pois
+               o envio era real, so que de um quadro sem a foto). Buscando a referencia atual de
+               novo bem na hora de anexar, a foto sempre entra no objeto que realmente vai ser
+               salvo/enviado. */
+            var dAtual = (typeof driver === "function") ? (driver(driverId) || d) : d;
+            d = dAtual;
+            window.__anexoAtual.d = dAtual;
+            d.anexosEntrega = d.anexosEntrega || {};
             d.anexosEntrega[key] = d.anexosEntrega[key] || [];
             d.anexosEntrega[key].push(item);
           }
