@@ -3187,6 +3187,9 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     inp.setAttribute("capture", "environment");
     inp.multiple = true;
     inp.style.display = "none";
+    var statusEl = document.createElement("p");
+    statusEl.id = "__anexoStatusMsg";
+    statusEl.style.cssText = "font-size:12px;color:var(--muted,#666);margin:8px 0 0;min-height:16px";
 
     function desenhar(){
       var lista = d.anexosEntrega[key] || [];
@@ -3229,6 +3232,7 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       addBtn.textContent = "📎 Adicionar (foto ou arquivo)";
       addBtn.addEventListener("click", function(){ inp.value = ""; inp.click(); });
       box.appendChild(addBtn);
+      box.appendChild(statusEl);
       var fechar = document.createElement("button");
       fechar.className = "mini";
       fechar.style.cssText = "width:100%;margin-top:8px";
@@ -3255,6 +3259,21 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
             try { if (typeof marcarAlteracao === "function") marcarAlteracao(); } catch(e){}
             desenhar();
             forcarReinjetar(driverId);
+            /* PATCH_ANEXO_SYNC_IMEDIATO v1 (08/09/2026): antes o envio pro servidor so acontecia
+               pelo debounce padrao de marcarAlteracao() (1.8s) - se a pessoa atualizasse a pagina
+               logo depois de anexar (comum, testando se salvou), o envio pendente era perdido e o
+               anexo sumia. Agora forca o envio na hora e mostra o status na tela. */
+            var __stEl = document.getElementById("__anexoStatusMsg");
+            if (__stEl) __stEl.textContent = "Enviando\u2026";
+            if (typeof enviarAoServidor === "function") {
+              enviarAoServidor().then(function(){
+                var __stEl2 = document.getElementById("__anexoStatusMsg");
+                if (__stEl2) __stEl2.textContent = "\u2705 Salvo \u2014 j\u00e1 pode sair da tela.";
+              }).catch(function(){
+                var __stEl2 = document.getElementById("__anexoStatusMsg");
+                if (__stEl2) __stEl2.textContent = "\u26a0\ufe0f N\u00e3o consegui confirmar o envio agora. Aguarde um instante antes de sair da tela.";
+              });
+            }
           }
         });
       });
