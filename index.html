@@ -3924,6 +3924,37 @@ html[data-tema="escuro"] .badge-next{ background:rgba(59,140,130,.22)!important;
 })();
 </script>
 <script>
+/* PATCH_STATUS_FINALIZADO_RESPEITA_BSOFT v1 - achado em 09/09/2026 (QAW-1E78, MDF-e 923):
+   um card com MDF-e AINDA ABERTO no BSoft (d.bsoftAberto=true) virava "finalizado" sozinho
+   so por causa de rastreio (Ca2Track) parado/velho ha muitas horas (neste caso, 526h/22 dias
+   sem sinal), mesmo com o MDF-e confirmado aberto. Causa: a TRANSICAO pra "finalizado" por
+   "sem sinal ha HORAS_SEM_SINAL_FINALIZA horas" (dentro de statusAutomatico, ver
+   PATCH_STATUS_FINALIZADO_FIXO v2 logo acima) nunca checou bsoftAberto - so o TRAVAMENTO
+   de quem JA esta "finalizado" e que ganhou esse tipo de cuidado antes (v1/v2 acima); a
+   transicao em si sempre ignorou o campo, em qualquer versao. Corrigido: agora so finaliza
+   automaticamente por sinal parado quando o BSoft ja confirmou o MDF-e fechado
+   (!d.bsoftAberto) - card com MDF-e ainda aberto fica parado no status atual
+   (em_rota/no_cliente) ate o BSoft confirmar o fechamento (proximo ciclo do robo de
+   sincronizacao, ver robo-sync-status-bsoft) ou um sinal novo chegar. NAO mexe no
+   travamento incondicional de quem ja esta "finalizado" (isso continua do jeito que o dono
+   pediu, pra card fechado na mao nao voltar sozinho). Para desfazer, apague este bloco
+   (volta a se comportar como o PATCH_STATUS_FINALIZADO_FIXO v2 sozinho, sem essa checagem). */
+(function(){
+  if (window.__PATCH_STATUS_FINALIZADO_RESPEITA_BSOFT === "v1") return;
+  if (typeof semSinalHaHoras !== "function" || typeof entregaNaReferencia !== "function") return;
+  window.__PATCH_STATUS_FINALIZADO_RESPEITA_BSOFT = "v1";
+  window.statusAutomatico = function(d){
+    if(d.semNf) return "finalizado";
+    if(d.status === "finalizado") return "finalizado";
+    if((d.status==="em_rota" || d.status==="no_cliente") && !d.bsoftAberto && semSinalHaHoras(d, HORAS_SEM_SINAL_FINALIZA)) return "finalizado";
+    if(entregaNaReferencia(d) >= 0) return "no_cliente";
+    if(!(d.entregas && d.entregas.length)) return "carregando";
+    if(d.tracking) return "em_rota";
+    return d.status;
+  };
+})();
+</script>
+<script>
 /* PATCH_EDITAR_IDENTIDADE v1 - pedido do dono, 21/08/2026: botao discreto (lapis, do lado
    do lixinho no topo do card) pra editar o nome do motorista e a placa a qualquer momento,
    sem precisar apagar e recriar o card. Se o motorista mudar de nome, a foto dele (S.fotos,
