@@ -279,7 +279,19 @@ window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
 
   /* Coluna vazia com um icone discreto em vez de so texto (10/09/2026) */
   .empty-ic{font-size:19px;opacity:.4;margin-bottom:3px}
+
+  /* Mapa da frota (10/09/2026) */
+  #mapaView{padding:0}
+  #mapaTopo{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  #mapaTopo p{margin:0;font-size:13px;color:var(--muted)}
+  #mapaEl{height:min(70vh,620px);min-height:340px;border-radius:12px;border:1px solid var(--line);overflow:hidden}
+  .mpin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .mpin-pop{font-family:'Work Sans',sans-serif;font-size:12.5px;line-height:1.45;min-width:150px}
+  .mpin-pop b{font-size:13.5px}
+  .mpin-pop .st{display:inline-block;margin-top:3px;padding:1px 7px;border-radius:5px;font-size:11px;font-weight:700;color:#fff}
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
 <div id="login">
@@ -321,6 +333,7 @@ window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
       <button class="btn btn-teal" id="btnImpEnt">✅ Importar entregas</button>
       <button class="btn btn-amber" id="btnAdd">＋ Motorista</button>
       <button class="btn btn-green" id="btnArq">🗄 Encerrar finalizados</button>
+      <button class="btn btn-ghost" id="btnMapa">🗺 Mapa</button>
       <button class="btn btn-ghost" id="btnHist">🕘 Histórico</button>
       <button class="btn btn-ghost" id="btnCfg" title="Configurações">⚙ Configurações</button>
       <button class="btn btn-ghost" id="btnSair" title="Sair do painel">⎋ Sair</button>
@@ -533,6 +546,10 @@ create policy "acesso do painel" on painel
 </div>
 <div class="board" id="board"></div>
 <div class="hist" id="histView" style="display:none"></div>
+<div id="mapaView" style="display:none">
+  <div id="mapaTopo"><p id="mapaMsg"></p></div>
+  <div id="mapaEl"></div>
+</div>
 </div><!-- /#app -->
 <script>
 /* Pre-configuracao TRANSLOAD (Claude, 14/08/2026): quadro compartilhado + usuario lucas */
@@ -1218,6 +1235,16 @@ function render(){
   $("btnArq").textContent = "🗄 Encerrar finalizados" + (fin?" ("+fin+")":"");
   $("btnHist").textContent = S.view==="painel" ? "🕘 Histórico" : "🕘 Voltar ao painel";
   $("btnHist").className = "btn " + (S.view==="historico" ? "btn-white":"btn-ghost");
+  $("btnMapa").textContent = S.view==="mapa" ? "🗺 Fechar mapa" : "🗺 Mapa";
+  $("btnMapa").className = "btn " + (S.view==="mapa" ? "btn-white":"btn-ghost");
+  if(S.view === "mapa"){
+    $("board").style.display = "none";
+    $("histView").style.display = "none";
+    $("mapaView").style.display = "block";
+    renderMapa();
+    return;
+  }
+  $("mapaView").style.display = "none";
   if(S.view === "historico"){
     $("board").style.display = "none";
     $("histView").style.display = "block";
@@ -1378,6 +1405,7 @@ $("btnArq").addEventListener("click", ()=>{
   save(); render();
 });
 $("btnHist").addEventListener("click", ()=>{ S.view = S.view==="painel" ? "historico":"painel"; render(); });
+$("btnMapa").addEventListener("click", ()=>{ S.view = S.view==="mapa" ? "painel":"mapa"; render(); });
 const SENS_KEY = "painel-viagens-sensores";
 const PREF_KEY = "painel-viagens-pref";
 function carregarPrefs(){
@@ -6396,6 +6424,200 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
     agruparEntregasPorDestino: agruparEntregasPorDestino,
     calcularGrupos: calcularGrupos,
     garantirBotoes: garantirBotoes
+  };
+})();
+</script>
+<script>
+/* PATCH_MAPA v1 (10/09/2026) - mapa da frota com a posicao de cada caminhao (pedido do dono:
+   hoje tudo e texto de endereco, ele queria ver de relance onde a frota esta - pin por placa,
+   cor pelo status). O Ca2Track so fornece endereco em texto (d.tracking.posicao/referencia),
+   sem lat/lon prontos, entao cada posicao e geocodificada via Nominatim/OpenStreetMap (mesmo
+   servico e cadencia de ~1 req/s ja usado pelo PATCH_DISTANCIA_ENTREGAS/PATCH_GEOCODIFICACAO_
+   ORIGEM_v1 para as entregas - reaproveita ate a MESMA chave de cache "painel-geo-cache-v1" no
+   localStorage). Mapa via Leaflet (CDN, sem chave de API) + tiles OpenStreetMap no tema claro
+   e CartoDB dark_matter no escuro/preto. Nao mexe em nenhuma funcao existente - so lê S.drivers
+   e desenha. Para desfazer: apagar este bloco, o botao #btnMapa, a div #mapaView e as tags do
+   Leaflet no <head>. */
+(function(){
+  if (window.__PATCH_MAPA) return;
+  window.__PATCH_MAPA = "v1";
+
+  var GEO_CACHE_KEY = "painel-geo-cache-v1";
+  var RESULT_CACHE_KEY = "painel-geo-caminhoes-resultado-v1";
+  var proximoHorarioLivre = 0;
+  var filaAtiva = false;
+  var geocodificando = {};
+  var fila = [];
+
+  function geoCacheLer(){ try{ return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}"); }catch(e){ return {}; } }
+  function geoCacheSalvar(c){ try{ localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); }catch(e){} }
+  function resultLer(){ try{ return JSON.parse(localStorage.getItem(RESULT_CACHE_KEY) || "{}"); }catch(e){ return {}; } }
+  function resultSalvar(c){ try{ localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(c)); }catch(e){} }
+  function chaveTexto(txt){ return String(txt||"").trim().toLowerCase(); }
+  function esperar(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  function reservarVez(){
+    var agora = Date.now();
+    var inicio = Math.max(agora, proximoHorarioLivre);
+    proximoHorarioLivre = inicio + 1100;
+    return inicio - agora;
+  }
+  async function geocodificarBruto(endereco){
+    var chave = chaveTexto(endereco);
+    if(!chave) return null;
+    var cache = geoCacheLer();
+    if(Object.prototype.hasOwnProperty.call(cache, chave)) return cache[chave];
+    var espera = reservarVez();
+    if(espera > 0) await esperar(espera);
+    try{
+      var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=" + encodeURIComponent(endereco);
+      var r = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+      if(!r.ok) return null;
+      var j = await r.json();
+      var p = (j && j[0]) ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
+      cache[chave] = p;
+      geoCacheSalvar(cache);
+      return p;
+    }catch(e){ return null; }
+  }
+  async function geocodificarPosicao(posTxt){
+    var limpo = String(posTxt||"").replace(/^\s*Prx\.?\s+/i, "").trim();
+    if(!limpo) return null;
+    var p = await geocodificarBruto(limpo + ", Brasil");
+    if(!p){
+      var partes = limpo.split(",");
+      var cidadeUf = partes.length > 1 ? partes[partes.length-1].trim() : "";
+      if(cidadeUf) p = await geocodificarBruto(cidadeUf + ", Brasil");
+    }
+    if(!p){
+      var ufM = limpo.match(/-\s*([A-Z]{2})\s*$/);
+      var viaParte = limpo.split(",")[0].trim();
+      if(viaParte) p = await geocodificarBruto(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
+    }
+    return p || null;
+  }
+  function enfileirar(posTxt){
+    var chave = chaveTexto(posTxt);
+    if(!chave || geocodificando[chave]) return;
+    var resultados = resultLer();
+    if(Object.prototype.hasOwnProperty.call(resultados, chave)) return;
+    geocodificando[chave] = true;
+    fila.push({ chave: chave, texto: posTxt });
+    processarFila();
+  }
+  async function processarFila(){
+    if(filaAtiva) return;
+    filaAtiva = true;
+    while(fila.length){
+      var item = fila.shift();
+      var p = await geocodificarPosicao(item.texto);
+      var resultados = resultLer();
+      resultados[item.chave] = p;
+      resultSalvar(resultados);
+      delete geocodificando[item.chave];
+      if(typeof window.render === "function" && typeof S !== "undefined" && S.view === "mapa"){
+        try{ window.render(); }catch(e){}
+      }
+    }
+    filaAtiva = false;
+  }
+
+  var mapa = null, tileAtual = null, temaAtual = null;
+  var marcadores = {};
+
+  function tileParaTema(tema){
+    if(tema === "escuro" || tema === "preto"){
+      return L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: "abcd", maxZoom: 19
+      });
+    }
+    return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19
+    });
+  }
+  function pinIcon(cor){
+    return L.divIcon({
+      className: "",
+      html: '<div class="mpin" style="background:' + cor + '"></div>',
+      iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -24]
+    });
+  }
+
+  window.renderMapa = function(){
+    var el = document.getElementById("mapaEl");
+    if(!el) return;
+    if(typeof L === "undefined"){
+      var msgErro = document.getElementById("mapaMsg");
+      if(msgErro) msgErro.textContent = "Não consegui carregar o mapa (biblioteca bloqueada ou sem internet) — tente recarregar a página.";
+      return;
+    }
+    var tema = document.documentElement.getAttribute("data-tema") || "claro";
+    if(!mapa){
+      mapa = L.map(el).setView([-15.78, -47.93], 4.3);
+      tileAtual = tileParaTema(tema);
+      tileAtual.addTo(mapa);
+      temaAtual = tema;
+      setTimeout(function(){ try{ mapa.invalidateSize(); }catch(e){} }, 120);
+    } else if(tema !== temaAtual){
+      mapa.removeLayer(tileAtual);
+      tileAtual = tileParaTema(tema);
+      tileAtual.addTo(mapa);
+      temaAtual = tema;
+    }
+
+    var q = (S.query||"").trim().toUpperCase();
+    var visiveis = (S.drivers||[]).filter(function(d){
+      var okq = !q || (d.motorista||"").toUpperCase().indexOf(q)!==-1 || (d.placa||"").toUpperCase().indexOf(q)!==-1 || (d.mdfe||"").indexOf(q)!==-1;
+      var oks = S.statusFilter==="todos" || d.status===S.statusFilter;
+      return okq && oks;
+    });
+
+    var resultados = resultLer();
+    var vistos = {};
+    var comPino = 0, semPosicaoTxt = 0, aguardandoGeo = 0, naoAchou = 0;
+
+    visiveis.forEach(function(d){
+      var posTxt = (d.tracking && (d.tracking.posicao || d.tracking.referencia)) || "";
+      if(!posTxt){ semPosicaoTxt++; return; }
+      var chave = chaveTexto(posTxt);
+      if(!Object.prototype.hasOwnProperty.call(resultados, chave)){
+        aguardandoGeo++;
+        enfileirar(posTxt);
+        return;
+      }
+      var p = resultados[chave];
+      if(!p){ naoAchou++; return; }
+      vistos[d.id] = true;
+      var st = STAGES.find(function(s){ return s.key === d.status; }) || STAGES[0];
+      var pos = [p.lat, p.lon];
+      if(marcadores[d.id]){
+        marcadores[d.id].setLatLng(pos);
+        marcadores[d.id].setIcon(pinIcon(st.color));
+      } else {
+        marcadores[d.id] = L.marker(pos, { icon: pinIcon(st.color) }).addTo(mapa);
+      }
+      var atualizado = d.tracking && d.tracking.trackedAt ? timeAgo(d.tracking.trackedAt) : "sem horário";
+      var pop = '<div class="mpin-pop"><b>' + esc(d.motorista||"") + '</b><br>' +
+        esc(d.placa||"") + (d.mdfe ? " · MDF-e " + esc(d.mdfe) : "") + '<br>' +
+        '<span class="st" style="background:' + st.color + '">' + st.icon + " " + esc(st.label) + '</span><br>' +
+        'rastreio ' + atualizado + '</div>';
+      marcadores[d.id].bindPopup(pop);
+      comPino++;
+    });
+
+    Object.keys(marcadores).forEach(function(id){
+      if(!vistos[id]){ mapa.removeLayer(marcadores[id]); delete marcadores[id]; }
+    });
+
+    var msg = document.getElementById("mapaMsg");
+    if(msg){
+      var partes = [comPino + " no mapa"];
+      if(aguardandoGeo) partes.push(aguardandoGeo + " localizando…");
+      if(naoAchou) partes.push(naoAchou + " sem localização encontrada");
+      if(semPosicaoTxt) partes.push(semPosicaoTxt + " sem rastreio ainda");
+      msg.textContent = partes.join(" · ");
+    }
   };
 })();
 </script>
