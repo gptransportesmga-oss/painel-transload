@@ -2350,7 +2350,9 @@ try{
     }catch(e){}
   }
   var __st=document.createElement("style");
-  __st.textContent=".tempo-chip{background:#EAF6EE;color:#3C9B5F;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}.tempo-chip.vivo{background:#F1EEF7;color:#7C6FA8;animation:pulsa 2.4s infinite}";
+  __st.textContent=".tempo-chip{background:#EAF6EE;color:#3C9B5F;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}.tempo-chip.vivo{background:#F1EEF7;color:#7C6FA8;animation:pulsa 2.4s infinite}"+
+    "html[data-tema=\"escuro\"] .tempo-chip{background:#16301F!important}html[data-tema=\"escuro\"] .tempo-chip.vivo{background:#241C4E!important}"+
+    "html[data-tema=\"preto\"] .tempo-chip{background:#122A1A!important}html[data-tema=\"preto\"] .tempo-chip.vivo{background:#160F30!important}";
   document.head.appendChild(__st);
   if(typeof render==="function"){
     var __r0=render;
@@ -3815,6 +3817,8 @@ html[data-tema="escuro"] .emeta>span[data-horaent]{ background:#16301F!important
 html[data-tema="escuro"] .emeta>span.mono{ color:#8FC1EA!important; }
 html[data-tema="preto"] .emeta>span[data-horaent]{ background:#122A1A!important; color:#6BC98F!important; }
 html[data-tema="preto"] .emeta>span.mono{ color:#A692FF!important; }
+html[data-tema="escuro"] .erow.here{ background:#16301F!important; }
+html[data-tema="preto"] .erow.here{ background:#122A1A!important; }
 .badge-here{font-size:11px!important;padding:2px 6px;background:#E8F5EC;border-radius:5px}
 .badge-next{font-size:11px!important;padding:2px 6px;background:rgba(59,140,130,.14);border-radius:5px}
 html[data-tema="escuro"] .badge-here{ background:#16301F!important; }
