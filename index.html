@@ -6448,9 +6448,15 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   var filaAtiva = false;
   var geocodificando = {};
   var fila = [];
+  var tentativas = {};
+  var falhaPermanente = {};
+  var MAX_TENTATIVAS = 3;
 
+  var GEO_CACHE_PHOTON_KEY = "painel-geo-cache-photon-v1";
   function geoCacheLer(){ try{ return JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}"); }catch(e){ return {}; } }
   function geoCacheSalvar(c){ try{ localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); }catch(e){} }
+  function geoCachePhotonLer(){ try{ return JSON.parse(localStorage.getItem(GEO_CACHE_PHOTON_KEY) || "{}"); }catch(e){ return {}; } }
+  function geoCachePhotonSalvar(c){ try{ localStorage.setItem(GEO_CACHE_PHOTON_KEY, JSON.stringify(c)); }catch(e){} }
   function resultLer(){ try{ return JSON.parse(localStorage.getItem(RESULT_CACHE_KEY) || "{}"); }catch(e){ return {}; } }
   function resultSalvar(c){ try{ localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(c)); }catch(e){} }
   function chaveTexto(txt){ return String(txt||"").trim().toLowerCase(); }
@@ -6461,11 +6467,15 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
     proximoHorarioLivre = inicio + 1100;
     return inicio - agora;
   }
+  /* Nominatim: preciso, mas falha quando o endereco vem sem acento (o Ca2Track manda
+     "OLMPIA" em vez de "OLÍMPIA", por exemplo) - resultado negativo NAO fica em cache
+     pra sempre, senao um endereco que falhou uma vez nunca mais seria tentado de novo
+     mesmo depois de melhorias no codigo (10/09/2026) */
   async function geocodificarBruto(endereco){
     var chave = chaveTexto(endereco);
     if(!chave) return null;
     var cache = geoCacheLer();
-    if(Object.prototype.hasOwnProperty.call(cache, chave)) return cache[chave];
+    if(Object.prototype.hasOwnProperty.call(cache, chave) && cache[chave]) return cache[chave];
     var espera = reservarVez();
     if(espera > 0) await esperar(espera);
     try{
@@ -6474,32 +6484,60 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
       if(!r.ok) return null;
       var j = await r.json();
       var p = (j && j[0]) ? { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon) } : null;
-      cache[chave] = p;
-      geoCacheSalvar(cache);
+      if(p){ cache[chave] = p; geoCacheSalvar(cache); }
+      return p;
+    }catch(e){ return null; }
+  }
+  /* Photon (Komoot, gratis, sem chave de API) - busca "fuzzy"/tolerante a erro de texto,
+     entao acha endereco mesmo sem acentuacao onde o Nominatim exato falha. Usado so como
+     reforco depois que o Nominatim nao acha nada (10/09/2026) */
+  async function geocodificarBrutoPhoton(endereco){
+    var chave = chaveTexto(endereco);
+    if(!chave) return null;
+    var cache = geoCachePhotonLer();
+    if(Object.prototype.hasOwnProperty.call(cache, chave) && cache[chave]) return cache[chave];
+    var espera = reservarVez();
+    if(espera > 0) await esperar(espera);
+    try{
+      var url = "https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(endereco);
+      var r = await fetch(url);
+      if(!r.ok) return null;
+      var j = await r.json();
+      var f = j && j.features && j.features[0];
+      var p = (f && f.geometry && f.geometry.coordinates) ? { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] } : null;
+      if(p){ cache[chave] = p; geoCachePhotonSalvar(cache); }
       return p;
     }catch(e){ return null; }
   }
   async function geocodificarPosicao(posTxt){
     var limpo = String(posTxt||"").replace(/^\s*Prx\.?\s+/i, "").trim();
     if(!limpo) return null;
-    var p = await geocodificarBruto(limpo + ", Brasil");
-    if(!p){
-      var partes = limpo.split(",");
-      var cidadeUf = partes.length > 1 ? partes[partes.length-1].trim() : "";
-      if(cidadeUf) p = await geocodificarBruto(cidadeUf + ", Brasil");
+    var partes = limpo.split(",");
+    var cidadeUf = partes.length > 1 ? partes[partes.length-1].trim() : "";
+    var ufM = limpo.match(/-\s*([A-Z]{2})\s*$/);
+    var viaParte = limpo.split(",")[0].trim();
+    var queries = [
+      limpo + ", Brasil",
+      cidadeUf ? cidadeUf + ", Brasil" : null,
+      viaParte ? viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil" : null
+    ];
+    for(var i=0; i<queries.length; i++){
+      if(!queries[i]) continue;
+      var p = await geocodificarBruto(queries[i]);
+      if(p) return p;
     }
-    if(!p){
-      var ufM = limpo.match(/-\s*([A-Z]{2})\s*$/);
-      var viaParte = limpo.split(",")[0].trim();
-      if(viaParte) p = await geocodificarBruto(viaParte + (ufM ? ", " + ufM[1] : "") + ", Brasil");
+    for(var j=0; j<queries.length; j++){
+      if(!queries[j]) continue;
+      var p2 = await geocodificarBrutoPhoton(queries[j]);
+      if(p2) return p2;
     }
-    return p || null;
+    return null;
   }
   function enfileirar(posTxt){
     var chave = chaveTexto(posTxt);
-    if(!chave || geocodificando[chave]) return;
+    if(!chave || geocodificando[chave] || falhaPermanente[chave]) return;
     var resultados = resultLer();
-    if(Object.prototype.hasOwnProperty.call(resultados, chave)) return;
+    if(Object.prototype.hasOwnProperty.call(resultados, chave) && resultados[chave]) return;
     geocodificando[chave] = true;
     fila.push({ chave: chave, texto: posTxt });
     processarFila();
@@ -6510,9 +6548,21 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
     while(fila.length){
       var item = fila.shift();
       var p = await geocodificarPosicao(item.texto);
-      var resultados = resultLer();
-      resultados[item.chave] = p;
-      resultSalvar(resultados);
+      /* so grava resultado positivo - assim um endereco que ainda nao foi achado
+         continua sendo tentado nas proximas renderizacoes do mapa, em vez de ficar
+         "nao achou" pra sempre em cache. Depois de algumas tentativas na mesma sessao,
+         desiste (falhaPermanente) pra nao ficar tentando pra sempre um endereco ruim -
+         mas essa marca some ao recarregar a pagina, entao sempre tenta de novo depois
+         (10/09/2026) */
+      if(p){
+        var resultados = resultLer();
+        resultados[item.chave] = p;
+        resultSalvar(resultados);
+        delete tentativas[item.chave];
+      } else {
+        tentativas[item.chave] = (tentativas[item.chave]||0) + 1;
+        if(tentativas[item.chave] >= MAX_TENTATIVAS) falhaPermanente[item.chave] = true;
+      }
       delete geocodificando[item.chave];
       if(typeof window.render === "function" && typeof S !== "undefined" && S.view === "mapa"){
         try{ window.render(); }catch(e){}
@@ -6576,6 +6626,7 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
       var posTxt = (d.tracking && (d.tracking.posicao || d.tracking.referencia)) || "";
       if(!posTxt){ semPosicaoTxt++; return; }
       var chave = chaveTexto(posTxt);
+      if(falhaPermanente[chave]){ naoAchou++; return; }
       if(!Object.prototype.hasOwnProperty.call(resultados, chave)){
         aguardandoGeo++;
         enfileirar(posTxt);
