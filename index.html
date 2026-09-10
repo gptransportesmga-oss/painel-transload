@@ -4404,13 +4404,20 @@ html[data-tema="preto"] .badge-next{ background:rgba(59,140,130,.28)!important; 
   var SESSAO_ID_KEY = "painel-viagens-sessao-id";
   var _enviarOriginal = window.enviarAoServidor;
 
+  /* FIX_404_PAINEL_SESSOES (10/09/2026), pedido do dono (achado numa checagem de peso/rede do
+     painel): esta funcao sempre consultou uma tabela "painel_sessoes" que nunca existiu em
+     nenhum dos projetos Supabase -- 404 garantido em toda gravacao. As sessoes de verdade
+     sempre moraram dentro de painel.dados.sessoes (mesmo lugar que o checador de "sessao
+     derrubada" de 20s, mais abaixo no arquivo, ja le corretamente). Corrigido pra ler do
+     lugar certo -- a checagem extra antes de cada envio volta a funcionar de verdade, em vez
+     de sempre falhar silenciosamente (!r.ok -> return false) e nunca bloquear nada. */
   async function estaDerrubadaAgora(id, cfg){
-    var u = cfg.url.replace(/\/+$/,"") + "/rest/v1/painel_sessoes?id=eq." + encodeURIComponent(cfg.quadro||"transload") + "&select=sessoes";
+    var u = cfg.url.replace(/\/+$/,"") + "/rest/v1/painel?id=eq." + encodeURIComponent(cfg.quadro||"transload") + "&select=dados";
     var r = await fetch(u, { headers: sbHeaders(cfg) });
     if(!r.ok) return false;
     var j = await r.json();
     var linha = Array.isArray(j) && j.length ? j[0] : null;
-    var sessoes = (linha && linha.sessoes) || {};
+    var sessoes = (linha && linha.dados && linha.dados.sessoes) || {};
     return !!(sessoes[id] && sessoes[id].revogado);
   }
 
@@ -5495,19 +5502,39 @@ function renderEntregaLM(container, d, idx, ov) {
    AIL-6D84) mesmo com a view painel_leve retornando 404. */
 (function(){
   if (window.__PATCH_SBLER_FALLBACK_PAINEL_LEVE) return;
-  window.__PATCH_SBLER_FALLBACK_PAINEL_LEVE = "v1";
+  window.__PATCH_SBLER_FALLBACK_PAINEL_LEVE = "v2";
   if (typeof window.sbLer !== "function") return;
   var _sbLerAtualFB = window.sbLer;
+
+  /* FIX_404_PAINEL_LEVE (10/09/2026), pedido do dono (achado numa checagem de peso/rede do
+     painel): a view painel_leve nunca foi recriada em NENHUM dos projetos Supabase desde a
+     primeira migracao (10-11 dias rodando assim) -- ou seja, esse 404 e permanente, no minimo
+     ate alguem recriar a view a mao (a chave publica do painel nao tem permissao de DDL, e o
+     classificador de seguranca bloqueou a tentativa de criar a view direto pelo SQL Editor
+     nesta sessao). Antes, TODA leitura completa (aparelho novo, link do motorista, ou qualquer
+     pull com dado novo) desperdicava uma chamada fadada a falhar antes de cair no fallback.
+     Agora: lembra (por sessao/aba, nao precisa persistir) que painel_leve esta fora do ar depois
+     da primeira falha, e pula direto pro fallback nas proximas vezes -- corta a chamada extra
+     sem mudar nenhum dado devolvido. Se a view for recriada no futuro, so precisa de um F5 pra
+     o painel voltar a tentar ela primeiro (o flag e por sessao, comeca sempre otimista). */
+  var leveIndisponivel = false;
+
+  async function lerFallbackCompleto(c){
+    var uFB = c.url.replace(/\/+$/, "") + "/rest/v1/painel?id=eq." + encodeURIComponent(c.quadro || "transload") + "&select=*";
+    var headersFB = (typeof sbHeaders === "function") ? sbHeaders(c) : {apikey: c.key, Authorization: "Bearer " + c.key};
+    var rFB = await fetch(uFB, { headers: headersFB });
+    if (!rFB.ok) throw new Error("HTTP " + rFB.status + " ao ler (fallback completo)");
+    var jFB = await rFB.json();
+    return Array.isArray(jFB) && jFB.length ? jFB[0] : null;
+  }
+
   window.sbLer = async function(c){
+    if (leveIndisponivel) return lerFallbackCompleto(c);
     try {
       return await _sbLerAtualFB(c);
     } catch (eFallbackSB) {
-      var uFB = c.url.replace(/\/+$/, "") + "/rest/v1/painel?id=eq." + encodeURIComponent(c.quadro || "transload") + "&select=*";
-      var headersFB = (typeof sbHeaders === "function") ? sbHeaders(c) : {apikey: c.key, Authorization: "Bearer " + c.key};
-      var rFB = await fetch(uFB, { headers: headersFB });
-      if (!rFB.ok) throw new Error("HTTP " + rFB.status + " ao ler (fallback completo)");
-      var jFB = await rFB.json();
-      return Array.isArray(jFB) && jFB.length ? jFB[0] : null;
+      leveIndisponivel = true;
+      return lerFallbackCompleto(c);
     }
   };
 })();
