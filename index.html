@@ -640,9 +640,8 @@ function textoProximaAtualizacaoBsoft(){
   if(!S.proximaAtualizacaoBsoft) return null;
   const rest = S.proximaAtualizacaoBsoft - Date.now();
   if(rest > 0){
-    const m = Math.floor(rest/60000);
-    const s = String(Math.floor((rest%60000)/1000)).padStart(2,"0");
-    return { txt: "⏱ próxima atualização BSoft em " + m + ":" + s, cls: "dim" };
+    const hora = new Date(S.proximaAtualizacaoBsoft).toLocaleTimeString("pt-BR", {timeZone:"America/Sao_Paulo", hour:"2-digit", minute:"2-digit"});
+    return { txt: "⏱ próxima atualização BSoft às " + hora, cls: "dim" };
   }
   if(rest > -10*60000) return { txt: "⏱ atualizando BSoft…", cls: "dim" };
   return { txt: "⏱ atualização automática BSoft pode estar parada", cls: "warn" };
