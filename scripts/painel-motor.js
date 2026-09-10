@@ -296,6 +296,12 @@ function mapearVeiculo(o) {
                   velocidade: Math.round(vel),
                   temps: temps,
                   trackedAt: parseQualquerData(dh) || Date.now(),
+                  /* Sensor da porta do bau (10/09/2026): a API do Ca2Track manda um flag de
+                     ESTADO ATUAL em o.evt_099 ("S"=aberta agora, "N"=fechada agora) -- nao
+                     existe evento separado de "fechou" no historico deles, so "abriu"
+                     (cod_tipoevento 99). O "desde quando" (portaBauDesde) e calculado no
+                     merge com o card existente, abaixo -- aqui so le o estado bruto. */
+                  portaBauAberta: o.evt_099 === 'S',
           },
     };
 }
@@ -510,6 +516,9 @@ function rodarMotor(dados, mapeados) {
         if (d.status === 'finalizado') return;
         const m = porPlaca[normalizePlaca(d.placa)];
         if (m) {
+                const estadoBauAntes = d.tracking ? d.tracking.portaBauAberta : undefined;
+                const desdeAntes = d.tracking ? d.tracking.portaBauDesde : undefined;
+                m.tracking.portaBauDesde = (m.tracking.portaBauAberta === estadoBauAntes && desdeAntes) ? desdeAntes : agora;
                 const antes = JSON.stringify(d.tracking || null);
                 const depois = JSON.stringify(m.tracking);
                 if (antes !== depois) {
