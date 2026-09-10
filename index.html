@@ -1153,6 +1153,12 @@ function cardHTML(d){
       h += '<span class="chip t'+(bad?" bad":"")+'" title="'+titulo+'"'+(vale?"":' style="opacity:.45"')+
            ">🌡 "+t+"°C"+(bad?" ⚠":(vale?"":" ⃠"))+"</span>";
     });
+    if(d.tracking.portaBauAberta !== undefined){
+      const bauAberto = d.tracking.portaBauAberta;
+      const bauDesde = d.tracking.portaBauDesde ? timeAgo(d.tracking.portaBauDesde) : "";
+      h += '<span class="chip'+(bauAberto?" bad":"")+'" title="Sensor de porta do baú (Ca2Track)">'+
+           "🚪 Baú "+(bauAberto?"aberto":"fechado")+(bauDesde?" — "+bauDesde:"")+"</span>";
+    }
     h += '<span class="ago">rastreio '+timeAgo(d.tracking.trackedAt)+"</span></div></div>";
   } else {
     h += '<button class="mini" style="width:100%;margin-top:10px;border:1px dashed var(--line);background:transparent" data-act="trkEdit" data-id="'+d.id+'">✏️ Adicionar rastreio</button>';
@@ -1811,6 +1817,12 @@ function mapearVeiculo(o){
       velocidade: Math.round(vel),
       temps: temps,
       trackedAt: parseQualquerData(dh) || Date.now(),
+      /* Sensor da porta do bau (10/09/2026): a API do Ca2Track manda um flag de
+         ESTADO ATUAL em o.evt_099 ("S"=aberta agora, "N"=fechada agora) -- nao
+         existe evento separado de "fechou" no historico deles, so "abriu"
+         (cod_tipoevento 99). O "desde quando" (portaBauDesde) e calculado no
+         merge com o card existente, abaixo -- aqui so le o estado bruto. */
+      portaBauAberta: o.evt_099 === "S",
     }
   };
 }
@@ -1844,7 +1856,12 @@ async function sincronizarApi(){
   let atualizados = 0;
   S.drivers.forEach(d=>{
     const m = porPlaca[normalizePlaca(d.placa)];
-    if(m){ d.tracking = m.tracking; touch(d); atualizados++; }
+    if(m){
+      const estadoBauAntes = d.tracking ? d.tracking.portaBauAberta : undefined;
+      const desdeAntes = d.tracking ? d.tracking.portaBauDesde : undefined;
+      m.tracking.portaBauDesde = (m.tracking.portaBauAberta === estadoBauAntes && desdeAntes) ? desdeAntes : Date.now();
+      d.tracking = m.tracking; touch(d); atualizados++;
+    }
   });
   const foraDoPainel = Object.keys(porPlaca)
     .filter(p => !S.drivers.some(d => normalizePlaca(d.placa) === p))
