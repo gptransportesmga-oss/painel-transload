@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
-// diag-eventos: script DE USO ÚNICO (descartável) para descobrir se a API do
-// Ca2Track expõe evento de abertura/fechamento de porta do baú, via os
-// endpoints /evento_historico/analitico e /ocorrencia_historico/analitico
-// (citados no manual mas nunca testados). Não grava nada em lugar nenhum --
-// só loga no console do GitHub Actions. Roda só via workflow_dispatch.
+// diag-eventos v2: script DE USO UNICO (descartavel) -- ja confirmou que existe
+// evento de porta do bau via /evento_historico/analitico (cod_tipoevento 99 =
+// "Porta do Bau Aberta 1 (sensor)"). Agora busca, pra TODA a frota, os ultimos
+// 14 dias de eventos, monta um dicionario tipoevento->cod_tipoevento, e lista
+// especificamente os eventos de porta (motorista/carona/bau) com data/hora, pra
+// confirmar o par abertura/fechamento. So loga no console, nao grava nada.
 //
 // Este script nunca deve imprimir os segredos (CA2_USUARIO/CA2_SENHA).
 
@@ -42,70 +43,51 @@ async function login() {
     throw new Error('LOGIN falhou: HTTP ' + r.http + ' ' + JSON.stringify(r.body));
 }
 
-function pad(s) { return JSON.stringify(s, null, 1); }
-
-function dataBR(d) {
-    const p2 = (n) => String(n).padStart(2, '0');
-    return p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' +
-        p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
-}
-function dataISO(d) { return d.toISOString(); }
-
 async function main() {
-    console.log('=== diag-eventos: login ===');
+    console.log('=== diag-eventos v2: login ===');
     const token = await login();
-    console.log('Login OK, token recebido (' + token.length + ' chars).');
+    console.log('Login OK.');
 
-    console.log('\n=== diag-eventos: /rastreamento/listar (achar 1 veiculo de amostra) ===');
     const frota = await apiPost('/rastreamento/listar', { tipo: 'desktop' }, token);
-    console.log('HTTP', frota.http);
     let lista = [];
     if (frota.body && frota.body.result) {
         lista = Array.isArray(frota.body.result) ? frota.body.result
             : (Object.values(frota.body.result).find((v) => Array.isArray(v)) || []);
     }
-    console.log('Veiculos recebidos:', lista.length);
-    if (!lista.length) { console.log('Nada recebido, abortando.'); return; }
-    const amostra = lista[0];
-    console.log('Campos do 1o veiculo (chaves):', Object.keys(amostra));
-    console.log('1o veiculo completo:', pad(amostra));
-
-    // candidatos a campo de identificador do veiculo, pra usar nos endpoints de historico
-    const idCandidatos = ['cod_veiculo', 'codveiculo', 'codVeiculo', 'idveiculo', 'idVeiculo',
-        'id_veiculo', 'veiculo_id', 'veiculoId', 'cod_rastreador', 'codRastreador', 'id'];
-    const idsAchados = {};
-    idCandidatos.forEach((k) => { if (amostra[k] !== undefined) idsAchados[k] = amostra[k]; });
-    console.log('Possiveis campos de ID encontrados na amostra:', pad(idsAchados));
+    console.log('Veiculos:', lista.map((v) => v.placa + '(cod ' + v.cod_veiculo + ')').join(', '));
 
     const agora = new Date();
-    const seteDiasAtras = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const diBR = dataBR(seteDiasAtras), dfBR = dataBR(agora);
-    const diISO = dataISO(seteDiasAtras), dfISO = dataISO(agora);
+    const catorzeDias = new Date(agora.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const di = catorzeDias.toISOString(), df = agora.toISOString();
 
-    const idParaTeste = Object.values(idsAchados)[0];
+    const legenda = {};
+    const eventosPorta = [];
 
-    const corposParaTestar = [
-        { rota: '/evento_historico/analitico', nome: 'evento (BR date, cod_veiculo)', corpo: { cod_veiculo: idParaTeste, di: diBR, df: dfBR } },
-        { rota: '/evento_historico/analitico', nome: 'evento (ISO date, cod_veiculo)', corpo: { cod_veiculo: idParaTeste, di: diISO, df: dfISO } },
-        { rota: '/evento_historico/analitico', nome: 'evento (BR date, sem veiculo = frota toda)', corpo: { tipo: 'desktop', di: diBR, df: dfBR } },
-        { rota: '/ocorrencia_historico/analitico', nome: 'ocorrencia (BR date, cod_veiculo)', corpo: { cod_veiculo: idParaTeste, di: diBR, df: dfBR } },
-        { rota: '/ocorrencia_historico/analitico', nome: 'ocorrencia (ISO date, cod_veiculo)', corpo: { cod_veiculo: idParaTeste, di: diISO, df: dfISO } },
-        { rota: '/ocorrencia_historico/analitico', nome: 'ocorrencia (BR date, sem veiculo = frota toda)', corpo: { tipo: 'desktop', di: diBR, df: dfBR } },
-    ];
-
-    for (const t of corposParaTestar) {
-        console.log('\n=== ' + t.nome + ' -> POST ' + t.rota + ' ' + pad(t.corpo) + ' ===');
-        try {
-            const r = await apiPost(t.rota, t.corpo, token);
-            console.log('HTTP', r.http);
-            const s = pad(r.body);
-            console.log('Resposta (ate 3000 chars):', s.length > 3000 ? s.slice(0, 3000) + '...' : s);
-        } catch (e) {
-            console.log('Erro:', e.message);
-        }
+    for (const v of lista) {
+        const r = await apiPost('/evento_historico/analitico', { cod_veiculo: v.cod_veiculo, di, df }, token);
+        const eventos = (r.body && r.body.result) || [];
+        console.log(v.placa + ': ' + eventos.length + ' eventos em 14 dias');
+        eventos.forEach((e) => {
+            legenda[e.cod_tipoevento] = e.tipoevento;
+            if (/porta|ba.?u|sensor/i.test(e.tipoevento || '')) {
+                eventosPorta.push({ placa: v.placa, tipo: e.tipoevento, cod: e.cod_tipoevento, quando: e.ins_data, pos: e.posicao });
+            }
+        });
     }
 
-    console.log('\n=== FIM diag-eventos ===');
+    console.log('\n=== LEGENDA cod_tipoevento -> tipoevento (todos os tipos vistos) ===');
+    Object.keys(legenda).sort((a, b) => Number(a) - Number(b)).forEach((k) => {
+        console.log(k + ': ' + legenda[k]);
+    });
+
+    console.log('\n=== EVENTOS DE PORTA/BAU/SENSOR (todos os veiculos, 14 dias, ordenados) ===');
+    eventosPorta.sort((a, b) => String(a.quando).localeCompare(String(b.quando)));
+    eventosPorta.forEach((e) => {
+        console.log(e.quando + ' | ' + e.placa + ' | cod ' + e.cod + ' | ' + e.tipo + ' | ' + e.pos);
+    });
+    console.log('\nTotal eventos de porta/bau encontrados:', eventosPorta.length);
+
+    console.log('\n=== FIM diag-eventos v2 ===');
 }
 
 main().catch((e) => { console.error('Falha geral:', e.message); process.exit(1); });
