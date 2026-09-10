@@ -633,19 +633,6 @@ function sinalAtivo(d){
    por mais de 5 horas, o card pode ser jogado direto pra Finalizado — provavelmente já
    descarregou e desligou o rastreador, ou saiu de área de cobertura de vez. */
 const HORAS_SEM_SINAL_FINALIZA = 5;
-/* Cronômetro da atualização automática BSoft (Claude, 14/08/2026): o próprio Claude grava em
-   S.proximaAtualizacaoBsoft o horário previsto do próximo ciclo (roda por fora, a cada 5 min,
-   via agendamento encadeado) — aqui só exibimos a contagem regressiva. */
-function textoProximaAtualizacaoBsoft(){
-  if(!S.proximaAtualizacaoBsoft) return null;
-  const rest = S.proximaAtualizacaoBsoft - Date.now();
-  if(rest > 0){
-    const hora = new Date(S.proximaAtualizacaoBsoft).toLocaleTimeString("pt-BR", {timeZone:"America/Sao_Paulo", hour:"2-digit", minute:"2-digit"});
-    return { txt: "⏱ próxima atualização BSoft às " + hora, cls: "dim" };
-  }
-  if(rest > -10*60000) return { txt: "⏱ atualizando BSoft…", cls: "dim" };
-  return { txt: "⏱ atualização automática BSoft pode estar parada", cls: "warn" };
-}
 function semSinalHaHoras(d, horas){
   if(!d || !d.tracking || !d.tracking.trackedAt) return false;
   return (Date.now() - d.tracking.trackedAt) >= horas*3600000;
@@ -1052,8 +1039,6 @@ function renderSub(){
     h += '<span class="dim">🔕 alerta silenciado por '+min+" min</span>";
   }
   if(S.lastImportAt) h += '<span class="dim">rastreio importado '+timeAgo(S.lastImportAt)+"</span>";
-  const prox = textoProximaAtualizacaoBsoft();
-  if(prox) h += '<span class="'+prox.cls+'">'+esc(prox.txt)+"</span>";
   if(!HAS_LS) h += '<span class="dim">(sem gravação neste modo — abra o arquivo salvo no PC)</span>';
   $("sub").innerHTML = h;
   renderKpis();
@@ -2160,34 +2145,6 @@ else setTimeout(()=>$("usr").focus(), 80);
   else setTimeout(init,0);
 })();
 </script>
-<script>
-/* Cronometro do BSoft: sobrevive a recarregar/fechar a pagina (15/08/2026) */
-(function(){
-  var K="painel-viagens-prox-bsoft", pronto=false;
-  var t=setInterval(function(){
-    if(typeof S==="undefined"||!S) return;
-    try{
-      var v=localStorage.getItem(K), n=v?Number(v):0;
-      if(isFinite(n)&&n>Date.now()) S.proximaAtualizacaoBsoft=n;
-    }catch(e){}
-    pronto=true; clearInterval(t);
-    if(typeof render==="function"){ try{ render(); }catch(e){} }
-  },200);
-  setInterval(function(){
-    if(!pronto) return;
-    try{
-      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
-        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
-    }catch(e){}
-  },3000);
-  window.addEventListener("beforeunload",function(){
-    try{
-      if(typeof S!=="undefined"&&S&&S.proximaAtualizacaoBsoft)
-        localStorage.setItem(K,String(S.proximaAtualizacaoBsoft));
-    }catch(e){}
-  });
-})();
-</script>
 <style id="tema-transload">
 /* 1) Logo TRANSLOAD como marca d'agua no cabecalho (nao mexe em nenhum botao) */
 header{
@@ -2722,33 +2679,6 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
 })();
 </script>
 <script>
-/* ===== PATCH_CRONOMETRO v1 — cronometro que nao some =====
-   O contador dependia de um agente externo gravar S.proximaAtualizacaoBsoft.
-   Sem isso ele expirava e o texto sumia. Agora ele se renova sozinho.        */
-(function(){
-  if (window.__PATCH_CRONO) return;
-  if (typeof textoProximaAtualizacaoBsoft !== "function") return;
-  window.INTERVALO_BSOFT_MIN = 60;
-  var orig = textoProximaAtualizacaoBsoft;
-  window.__textoProxOrig = orig;
-  window.textoProximaAtualizacaoBsoft = function(){
-    var agora = Date.now();
-    var p = S.proximaAtualizacaoBsoft;
-    if(!p || p <= agora){
-      var passo = (window.INTERVALO_BSOFT_MIN||60)*60000;
-      var base = p || agora;
-      while(base <= agora) base += passo;
-      S.proximaAtualizacaoBsoft = base;
-    }
-    return orig();
-  };
-  if(!S.proximaAtualizacaoBsoft || S.proximaAtualizacaoBsoft <= Date.now()){
-    S.proximaAtualizacaoBsoft = Date.now() + (window.INTERVALO_BSOFT_MIN||60)*60000;
-  }
-  window.__PATCH_CRONO = "v1";
-})();
-</script>
-<script>
 /* ===== PATCH_ENTREGAS v1 — baixa automatica de entregas =====
    Regra: caminhao entra no raio do cliente, fica parado >= 60 min em dia util
    entre 7h e 19h, e depois sai -> aquela entrega recebe o visto verde.
@@ -2833,44 +2763,6 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     });
   };
   window.__PATCH_ENTREGAS = "v1";
-})();
-</script>
-<script>
-/* PATCH_CRONOPOS v1 — tira o cronômetro da barra de status e coloca logo abaixo do botão "Importar entregas". Para desfazer, basta apagar este bloco. */
-(function(){
-  if (window.__PATCH_CRONOPOS) return;
-  window.__PATCH_CRONOPOS = "v1";
-  var RX = /pr[o\u00f3]xima atualiza[c\u00e7][a\u00e3]o/i;
-  function slot(){
-    var btn = document.getElementById("btnImpEnt");
-    if(!btn) return null;
-    var w = document.getElementById("cronoSlot");
-    if(w && w.parentNode) return w;
-    var col = document.createElement("div");
-    col.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:3px";
-    btn.parentNode.insertBefore(col, btn);
-    col.appendChild(btn);
-    w = document.createElement("div");
-    w.id = "cronoSlot";
-    w.style.cssText = "font-size:11px;line-height:1.2;text-align:center;opacity:.8;min-height:13px;white-space:nowrap;color:rgba(255,255,255,.85)";
-    col.appendChild(w);
-    return w;
-  }
-  function mover(){
-    var w = slot(); if(!w) return;
-    var sub = document.getElementById("sub"); if(!sub) return;
-    var achou = null;
-    Array.prototype.forEach.call(sub.querySelectorAll("span"), function(s){ if(RX.test(s.textContent||"")) achou = s; });
-    if(achou){ var txt = achou.textContent.trim(); achou.remove(); if(w.textContent !== txt) w.textContent = txt; }
-  }
-  function iniciar(){
-    var sub = document.getElementById("sub");
-    if(!sub){ return setTimeout(iniciar, 500); }
-    mover();
-    new MutationObserver(mover).observe(sub, {childList:true, subtree:true, characterData:true});
-    setInterval(mover, 5000);
-  }
-  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar); else iniciar();
 })();
 </script>
 <script>
@@ -6505,29 +6397,5 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
     calcularGrupos: calcularGrupos,
     garantirBotoes: garantirBotoes
   };
-})();
-</script>
-
-<script>
-/* PATCH_CRONO_FLUIDO v1 (Claude, 09/09/2026) - cronometro "proxima atualizacao BSoft" passa a
-   contar segundo a segundo direto no #cronoSlot, sem depender de renderSub()/render() (que so
-   rodam a cada 15-60s hoje). Corrige o efeito de "congelar" entre atualizacoes e o numero pular
-   junto com o resto do painel redesenhando. Nao mexe no PATCH_CRONOPOS original (continua
-   responsavel por criar o slot e tirar o span de dentro de #sub) - so garante que o texto seja
-   atualizado a cada segundo. Para desfazer, apague este bloco. */
-(function(){
-  if (window.__PATCH_CRONO_FLUIDO) return;
-  window.__PATCH_CRONO_FLUIDO = "v1";
-  function tick(){
-    try{
-      var w = document.getElementById("cronoSlot");
-      if(!w) return;
-      if(typeof textoProximaAtualizacaoBsoft !== "function") return;
-      var info = textoProximaAtualizacaoBsoft();
-      if(info && info.txt && w.textContent !== info.txt) w.textContent = info.txt;
-    }catch(e){}
-  }
-  setInterval(tick, 1000);
-  if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", tick); else tick();
 })();
 </script>
