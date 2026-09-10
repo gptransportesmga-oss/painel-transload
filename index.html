@@ -6719,3 +6719,145 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   };
 })();
 </script>
+
+<script>
+(function(){
+  // PATCH_RADIO_GOSPEL v1
+  // Botão de rádio gospel (Vox Gospel FM) no painel principal e no link do motorista.
+  // Stream verificado ao vivo (BRLogic): tocando de fato, não apenas HTTP 200.
+  // Não edita nenhuma função existente: só observa e insere um botão novo,
+  // seguindo o mesmo padrão do PATCH_VERSICULO_DIA (host próprio, idempotente).
+  if (window.__PATCH_RADIO_GOSPEL) return;
+  window.__PATCH_RADIO_GOSPEL = "v1";
+
+  var STREAM_URL = "https://servidor25.brlogic.com:7062/live?identifier=Vox%20Gospel%20FM&source=4905";
+  var NOME_RADIO = "Vox Gospel FM";
+
+  var audio = null;
+  function getAudio(){
+    if (audio) return audio;
+    audio = new Audio();
+    audio.preload = "none";
+    audio.src = STREAM_URL;
+    audio.addEventListener("playing", function(){ audio.__carregando = false; audio.__erro = false; atualizarBotoes(); });
+    audio.addEventListener("pause", function(){ atualizarBotoes(); });
+    audio.addEventListener("waiting", function(){ audio.__carregando = true; atualizarBotoes(); });
+    audio.addEventListener("error", function(){ audio.__erro = true; audio.__carregando = false; atualizarBotoes(); });
+    return audio;
+  }
+
+  var botoes = []; // { btn, update }
+
+  function estadoAtual(){
+    if (!audio) return "parado";
+    if (audio.__erro) return "erro";
+    if (!audio.paused) return "tocando";
+    if (audio.__carregando) return "carregando";
+    return "parado";
+  }
+
+  function labelPara(estado){
+    if (estado === "tocando") return "⏸ " + NOME_RADIO;
+    if (estado === "carregando") return "⏳ " + NOME_RADIO;
+    if (estado === "erro") return "⚠ Rádio indisponível";
+    return "📻 " + NOME_RADIO;
+  }
+
+  function atualizarBotoes(){
+    var estado = estadoAtual();
+    var label = labelPara(estado);
+    botoes.forEach(function(item){
+      if (!item.btn || !item.btn.isConnected){ return; }
+      item.btn.textContent = label;
+      item.btn.classList.toggle("radioTocandoGospel", estado === "tocando");
+      item.btn.disabled = (estado === "carregando");
+    });
+    // limpa botões que saíram do DOM (ex.: troca de tela no link do motorista)
+    botoes = botoes.filter(function(item){ return item.btn && item.btn.isConnected; });
+  }
+
+  function alternar(){
+    var a = getAudio();
+    if (!a.paused){
+      a.pause();
+      atualizarBotoes();
+      return;
+    }
+    a.__erro = false;
+    a.__carregando = true;
+    atualizarBotoes();
+    // força reconexão ao vivo (evita tocar buffer antigo/travado)
+    try {
+      a.src = STREAM_URL + (STREAM_URL.indexOf("?") === -1 ? "?" : "&") + "_t=" + Date.now();
+      a.load();
+    } catch(e) {}
+    var p = a.play();
+    if (p && typeof p.catch === "function"){
+      p.catch(function(){
+        a.__erro = true;
+        a.__carregando = false;
+        atualizarBotoes();
+      });
+    }
+  }
+
+  function criarBotao(){
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost";
+    btn.id = "";
+    btn.title = "Rádio " + NOME_RADIO + " (toque para tocar/pausar)";
+    btn.textContent = labelPara(estadoAtual());
+    btn.addEventListener("click", function(e){
+      e.preventDefault();
+      alternar();
+    });
+    botoes.push({ btn: btn });
+    return btn;
+  }
+
+  // CSS mínimo: só o destaque de "tocando", reaproveita o resto do .btn-ghost existente
+  var style = document.createElement("style");
+  style.textContent = ".radioTocandoGospel{ box-shadow: 0 0 0 2px #22c55e inset; }";
+  document.head.appendChild(style);
+
+  function montarNoPainelPrincipal(){
+    if (document.getElementById("radioGospelHostPainel")) return true;
+    var tools = document.querySelector("header .tools");
+    if (!tools) return false;
+    var host = document.createElement("span");
+    host.id = "radioGospelHostPainel";
+    host.style.display = "inline-flex";
+    var btn = criarBotao();
+    host.appendChild(btn);
+    tools.appendChild(host);
+    return true;
+  }
+
+  function montarNoLinkMotorista(){
+    if (document.getElementById("radioGospelHostLM")) return true;
+    var header = document.querySelector(".lmHeaderLM");
+    if (!header) return false;
+    var host = document.createElement("div");
+    host.id = "radioGospelHostLM";
+    host.style.marginTop = "8px";
+    host.style.display = "inline-flex";
+    var btn = criarBotao();
+    host.appendChild(btn);
+    header.appendChild(host);
+    return true;
+  }
+
+  var tentativas = 0;
+  var timer = setInterval(function(){
+    tentativas++;
+    var okPainel = montarNoPainelPrincipal();
+    var okLM = montarNoLinkMotorista();
+    if (okPainel && okLM){
+      clearInterval(timer);
+    } else if (tentativas > 600){ // ~5 min a cada 500ms, então desiste de tentar sem parar
+      clearInterval(timer);
+    }
+  }, 500);
+})();
+</script>
