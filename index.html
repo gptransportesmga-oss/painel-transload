@@ -6525,15 +6525,10 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   var marcadores = {};
 
   function tileParaTema(tema){
-    if(tema === "escuro" || tema === "preto"){
-      return L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: "abcd", maxZoom: 19
-      });
-    }
+    /* CartoDB dark_all parou de funcionar sem chave de API (10/09/2026) - usando sempre o tile padrao OSM, que e gratis e sem chave */
     return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; OpenStreetMap',
-      maxZoom: 19
+      subdomains: "abc", maxZoom: 19
     });
   }
   function pinIcon(cor){
