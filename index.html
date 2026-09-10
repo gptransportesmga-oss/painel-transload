@@ -1869,7 +1869,13 @@ async function sincronizarApi(){
     .map(p => porPlaca[p].placa + (porPlaca[p].motorista ? " ("+porPlaca[p].motorista+")" : ""));
   const mudStatus = aplicarStatusAuto();
   S.lastImportAt = Date.now();
-  save(); checkAlerts(); render();
+  save(); checkAlerts();
+  /* FIX_RENDER_DESNECESSARIO (10/09/2026): antes redesenhava o quadro inteiro em TODO ciclo
+     do automático (a cada poucos minutos ou segundos, conforme o intervalo configurado),
+     mesmo quando nenhum caminhão tinha novidade -- um dos motivos do painel "piscar muito,
+     como se tivesse apertando F5 varias vezes". Só vale a pena reconstruir os cards quando
+     algo de fato mudou (posição/temperatura/porta de algum veículo, ou status automático). */
+  if(atualizados>0 || mudStatus>0) render();
   return { recebidos: lista.length, lidos: mapeados.length, atualizados: atualizados,
            status: mudStatus, fora: foraDoPainel };
 }
@@ -6232,24 +6238,40 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
         });
       });
     });
-    return Promise.all(promessas);
+    // retorna quantos anexos foram hidratados de verdade (0 = nada pra fazer,
+    // usado pelo chamador pra decidir se vale a pena redesenhar a tela).
+    return Promise.all(promessas).then(function(){ return promessas.length; });
   }
 
   function hidratarTudo(){
-    if(typeof S === 'undefined') return Promise.resolve();
-    return Promise.all([hidratarLista(S.drivers), hidratarLista(S.arquivo)]);
+    if(typeof S === 'undefined') return Promise.resolve(0);
+    return Promise.all([hidratarLista(S.drivers), hidratarLista(S.arquivo)])
+      .then(function(qtds){ return qtds[0] + qtds[1]; });
   }
 
   if(idbDisponivel){
-    hidratarTudo().then(function(){ if(typeof render === 'function') render(); }).catch(function(){});
+    hidratarTudo().then(function(qtd){ if(qtd>0 && typeof render === 'function') render(); }).catch(function(){});
   }
 
+  /* FIX_RENDER_DESNECESSARIO (10/09/2026), pedido do dono ("painel ainda pisca muito, como
+     se tivesse apertando F5 varias vezes"): esse wrapper redesenhava a tela inteira TODA VEZ
+     que puxarDoServidor() rodava, mesmo quando o PATCH_EGRESS_LEVE (mais acima no arquivo)
+     detectava que nada tinha mudado no servidor e nem chegava a atualizar S.drivers/S.arquivo.
+     Como puxarDoServidor() e chamado por varios timers independentes de ~20s (syncTimer,
+     checarDerrubado), isso causava um redesenho completo do quadro a cada poucos segundos --
+     e cada redesenho reconstroi TODOS os cards do zero (reinicia animacoes, pode piscar).
+     Corrigido: hidratarTudo() agora informa se hidratou algum anexo de verdade, e so redesenha
+     quando tem algo pra mostrar (a propria puxarDoServidor() original ja redesenha sozinha
+     quando dados novos chegam de fato -- ver "save(); render();" no fim dela). */
   var _origPuxar = window.puxarDoServidor;
   if(typeof _origPuxar === 'function'){
     window.puxarDoServidor = async function(){
       var r = await _origPuxar.apply(this, arguments);
       if(idbDisponivel){
-        try { await hidratarTudo(); if(typeof render === 'function') render(); } catch(e){}
+        try {
+          var qtd = await hidratarTudo();
+          if(qtd>0 && typeof render === 'function') render();
+        } catch(e){}
       }
       return r;
     };
