@@ -6968,3 +6968,17 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
   setTimeout(puxarLinksPlaca, 1500);
 })();
 </script>
+
+<style id="PATCH_FUNDO_CRUZ">
+/* PATCH_FUNDO_CRUZ v1 (Claude, 10/09/2026) - imagem de fundo discreta (cruz ao por do sol),
+   pedido do dono, atras dos cards. Card/coluna sao opacos por cima, entao so aparece nos vaos
+   entre eles - efeito sutil, nao atrapalha leitura. Imagem em assets/fundo-cruz.jpg (upload
+   manual do dono, nao ha ferramenta de upload de arquivo binario nesta sessao). Enquanto o
+   arquivo nao existir no repo, isso fica sem efeito visivel (nao quebra nada). Para desfazer,
+   apague este bloco <style>. */
+body{
+  background:
+    linear-gradient(rgba(247,246,252,.93), rgba(247,246,252,.93)),
+    url('assets/fundo-cruz.jpg') center/cover no-repeat fixed;
+}
+</style>
