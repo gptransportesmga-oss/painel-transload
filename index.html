@@ -234,6 +234,37 @@ window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
   .pill{font-size:11px;padding:2px 6px;border-radius:5px;color:#fff;font-weight:600}
   /* Botao "Importar rastreamento" oculto: a API do CA2Track ja importa sozinha (pedido do dono, 14/08/2026). Para reativar, apague a linha abaixo. */
   #btnImp,#btnVoz{display:none}
+
+  /* Resumo em KPI + painel de atencao (10/09/2026) - troca a linha de texto fina do topo
+     por blocos maiores, no mesmo espirito do mockup aprovado. Nao mexe em nenhuma logica,
+     so mostra os mesmos numeros que ja existiam em #sub de um jeito mais facil de ver. */
+  #kpiPanel{padding:0 22px}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 12px}
+  .kpi{flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:12px 16px;box-shadow:0 1px 2px rgba(20,12,60,.05)}
+  .kpi .lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+  .kpi .val{font-family:'Big Shoulders Display',sans-serif;font-size:26px;font-weight:700;line-height:1.15;margin-top:2px}
+  .kpi .sub2{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi.hero{background:linear-gradient(135deg,var(--route),#1B1240);border-color:transparent}
+  .kpi.hero .lbl,.kpi.hero .sub2{color:rgba(255,255,255,.78)}
+  .kpi.hero .val{color:#fff}
+  .kpi.warn .val{color:var(--alert)}
+  .kpi.hot .val{color:#E8672E}
+  .kpi.ok .val{color:var(--green)}
+  .attn{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,12,60,.05)}
+  .attn .hd{padding:10px 14px;font-weight:700;font-size:13px;border-bottom:1px solid var(--line)}
+  .attn-item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-left:3px solid var(--line);
+    border-bottom:1px solid var(--line)}
+  .attn-item:last-child{border-bottom:none}
+  .attn-item.red{border-left-color:var(--alert)}
+  .attn-item.amber{border-left-color:#E8672E}
+  .attn-item.route{border-left-color:var(--route)}
+  .attn-item .ic{font-size:15px}
+  .attn-item .tx{flex:1;font-size:12.5px}
+  .attn-item .tx b{font-family:'JetBrains Mono',monospace}
+  .attn-item .tag{font-size:11px;color:var(--muted);white-space:nowrap}
+  @media (max-width:720px){ .kpis{flex-wrap:wrap} .kpi{min-width:130px} }
 </style>
 </head>
 <body>
@@ -283,6 +314,7 @@ window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
   </div>
 </header>
 <div class="road"></div>
+<div id="kpiPanel"></div>
 <div class="panel" id="panelImp" style="display:none">
   <p class="hint">
     Abra o <b>Ca2Track</b>, selecione e copie a tabela (Placa, Data/Hora, Km/h, Posição, Referência e Temperaturas) e cole abaixo (Ctrl+V).
@@ -993,17 +1025,8 @@ async function atualizarCard(id){
   msgCard(id, "✅ Atualizado: " + feito.join(" + ") + ".", "ok");
 }
 function renderSub(){
-  const prob = S.drivers.filter(d=>d.problema).length;
-  const hot  = S.drivers.filter(d=>emAlerta(d,S.tempLimite)).length;
-  const cheg = S.drivers.filter(d=>chegouEmPonto(d.tracking) && d.status!=="finalizado").length;
-  const tot  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).length),0);
-  const fei  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).filter(e=>e.concluida).length),0);
   const data = new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"2-digit",month:"long"});
   let h = "<span>"+esc(data)+"</span>";
-  if(prob) h += '<span class="warn">⚠ '+prob+" com ocorrência</span>";
-  if(hot)  h += '<span class="hot">🌡 '+hot+" alertando ("+S.tempLimite+"°C ou mais)</span>";
-  if(cheg) h += '<span class="ok">📍 '+cheg+" chegando/no ponto</span>";
-  if(tot)  h += '<span class="box">📦 '+fei+"/"+tot+" entregas</span>";
   if(ART){ h += '<span class="ok">🔄 quadro compartilhado (artefato)</span>'; }
   if(syncLigado()){
     const seg = ultimoSyncOk ? Math.floor((Date.now()-ultimoSyncOk)/1000) : null;
@@ -1020,6 +1043,49 @@ function renderSub(){
   if(prox) h += '<span class="'+prox.cls+'">'+esc(prox.txt)+"</span>";
   if(!HAS_LS) h += '<span class="dim">(sem gravação neste modo — abra o arquivo salvo no PC)</span>';
   $("sub").innerHTML = h;
+  renderKpis();
+}
+function renderKpis(){
+  const el = $("kpiPanel");
+  if(!el) return;
+  const ativos = S.drivers.length;
+  const prob = S.drivers.filter(d=>d.problema);
+  const hot  = S.drivers.filter(d=>emAlerta(d,S.tempLimite));
+  const cheg = S.drivers.filter(d=>chegouEmPonto(d.tracking) && d.status!=="finalizado");
+  const tot  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).length),0);
+  const fei  = S.drivers.reduce((a,d)=>a+((d.entregas||[]).filter(e=>e.concluida).length),0);
+
+  let k = '<div class="kpis">';
+  k += '<div class="kpi hero"><div class="lbl">Em viagem</div><div class="val">'+ativos+'</div><div class="sub2">veículo(s) ativo(s)</div></div>';
+  k += '<div class="kpi'+(prob.length?' warn':'')+'"><div class="lbl">Ocorrências</div><div class="val">'+prob.length+'</div><div class="sub2">precisam de atenção</div></div>';
+  k += '<div class="kpi'+(hot.length?' hot':'')+'"><div class="lbl">Alertando</div><div class="val">'+hot.length+'</div><div class="sub2">'+S.tempLimite+'°C ou mais</div></div>';
+  k += '<div class="kpi'+(cheg.length?' ok':'')+'"><div class="lbl">No ponto</div><div class="val">'+cheg.length+'</div><div class="sub2">chegando/no cliente</div></div>';
+  k += '<div class="kpi"><div class="lbl">Entregas</div><div class="val">'+fei+'/'+tot+'</div><div class="sub2">concluídas hoje</div></div>';
+  k += '</div>';
+
+  const itens = [];
+  prob.forEach(function(d){
+    itens.push({cls:"red", ic:"⚠️", tx:"<b>"+esc(d.placa)+"</b> — ocorrência marcada", tag:timeAgo(d.updatedAt)});
+  });
+  hot.forEach(function(d){
+    const temps = (d.tracking && d.tracking.temps) || [];
+    const validos = temps.filter(function(x,i){ return sensorVale(d.placa,i); });
+    const pior = validos.length ? Math.max.apply(null, validos) : null;
+    itens.push({cls:"amber", ic:"🌡️", tx:"<b>"+esc(d.placa)+"</b> — temperatura"+(pior!=null?" em "+pior+"°C":"")+", acima do limite ("+S.tempLimite+"°C)", tag: d.tracking?timeAgo(d.tracking.trackedAt):""});
+  });
+  cheg.forEach(function(d){
+    const ref = d.tracking && d.tracking.referencia ? String(d.tracking.referencia).replace(/^em\s+/i,"") : "";
+    itens.push({cls:"route", ic:"📍", tx:"<b>"+esc(d.placa)+"</b> — chegou no ponto"+(ref?" ("+esc(ref)+")":""), tag: d.tracking?timeAgo(d.tracking.trackedAt):""});
+  });
+
+  if(itens.length){
+    k += '<div class="attn"><div class="hd">⚠️ Atenção agora</div><div class="items">';
+    itens.forEach(function(it){
+      k += '<div class="attn-item '+it.cls+'"><span class="ic">'+it.ic+'</span><div class="tx">'+it.tx+'</div><span class="tag">'+esc(it.tag)+'</span></div>';
+    });
+    k += '</div></div>';
+  }
+  el.innerHTML = k;
 }
 function cardHTML(d){
   const stageIdx = STAGES.findIndex(s=>s.key===d.status);
