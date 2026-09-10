@@ -5069,11 +5069,29 @@ html[data-tema="preto"] .badge-next{ background:rgba(59,140,130,.28)!important; 
     return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   }
   function linkDoMotoristaLM(d) {
-    if (!d.linkMotorista || !d.linkMotorista.chave) {
-      d.linkMotorista = { chave: tokenAleatorioLM(), criadoEm: Date.now() };
-      touch(d); save();
+    /* PATCH_LINK_MOTORISTA_PERSISTENTE_POR_PLACA (10/09/2026) - pedido do dono: "pode ser o
+       mesmo link por viagem" - o link agora e amarrado a PLACA, nao ao card/viagem, pra nao
+       precisar gerar/reenviar um link novo toda vez que fecha uma viagem e abre outra pro
+       mesmo caminhao (antes, cada card novo tinha um id novo e o link antigo parava de bater).
+       A chave persistente fica em S.linksPorPlaca[placa] (sincronizada entre
+       dispositivos pelo PATCH_SYNC_LINKSPORPLACA, mais abaixo no arquivo). */
+    if (!S.linksPorPlaca) S.linksPorPlaca = {};
+    var placaLM = normalizePlaca(d.placa);
+    var entry = S.linksPorPlaca[placaLM];
+    if (entry && entry.chave) {
+      entry.criadoEm = Date.now(); // renova o prazo de 30 dias a cada geracao/copia do link
+    } else if (d.linkMotorista && d.linkMotorista.chave) {
+      // card ja tinha link no esquema antigo (por id) - vira a chave persistente da placa,
+      // assim um link ja enviado ao motorista antes desta mudanca continua valendo
+      entry = { chave: d.linkMotorista.chave, criadoEm: d.linkMotorista.criadoEm || Date.now() };
+      S.linksPorPlaca[placaLM] = entry;
+    } else {
+      entry = { chave: tokenAleatorioLM(), criadoEm: Date.now() };
+      S.linksPorPlaca[placaLM] = entry;
     }
-    return location.origin + location.pathname + '?mot=' + encodeURIComponent(d.id) + '&tok=' + encodeURIComponent(d.linkMotorista.chave);
+    d.linkMotorista = { chave: entry.chave, criadoEm: entry.criadoEm };
+    touch(d); save();
+    return location.origin + location.pathname + '?mot=' + encodeURIComponent(placaLM) + '&tok=' + encodeURIComponent(entry.chave);
   }
   function copiarTextoLM(t) {
     var ok = false;
@@ -5264,16 +5282,33 @@ function renderEntregaLM(container, d, idx, ov) {
     ov.innerHTML = '<div style="text-align:center;margin-top:80px;color:#888;">Carregando...</div>';
     aguardarDadosLM(0, function (ok) {
       if (!ok) { telaLM(ov, '⚠️', 'Não conseguimos carregar os dados agora. Tente atualizar a página em instantes.'); return; }
+      /* PATCH_LINK_MOTORISTA_PERSISTENTE_POR_PLACA (10/09/2026) - "mot" na URL agora pode ser
+         uma PLACA (links gerados a partir de agora, ver linkDoMotoristaLM) ou um ID de card
+         antigo (links ja enviados antes desta mudanca - continuam valendo). Tenta por ID
+         primeiro (esquema antigo), depois por placa (esquema novo/persistente). */
+      var placaBuscadaLM = normalizePlaca(__motIdLM);
       var d = (typeof driver === 'function') ? driver(__motIdLM) : (S.drivers || []).find(function (x) { return x.id === __motIdLM; });
+      if (!d && placaBuscadaLM) d = (S.drivers || []).find(function (x) { return normalizePlaca(x.placa) === placaBuscadaLM; });
       if (!d) {
-        var arquivadoLM = (S.arquivo || []).find(function (x) { return x.id === __motIdLM && x.linkMotorista && x.linkMotorista.chave === __motTokLM; });
+        var arquivadoLM = (S.arquivo || []).find(function (x) {
+          var chaveOk = x.linkMotorista && x.linkMotorista.chave === __motTokLM;
+          return (x.id === __motIdLM || (placaBuscadaLM && normalizePlaca(x.placa) === placaBuscadaLM)) && chaveOk;
+        });
         if (arquivadoLM) { telaLM(ov, '✅', 'Viagem já finalizada — obrigado! Se precisar de um link novo, peça à central.'); return; }
         telaLM(ov, '⚠️', 'Não encontramos essa viagem. Peça um link novo à central.'); return;
       }
-      if (!d.linkMotorista || d.linkMotorista.chave !== __motTokLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
+      var chaveDoCardLM = d.linkMotorista && d.linkMotorista.chave;
+      var placaDoCardLM = normalizePlaca(d.placa);
+      var entryPlacaLM = (S.linksPorPlaca || {})[placaDoCardLM];
+      var chaveDaPlacaLM = entryPlacaLM && entryPlacaLM.chave;
+      var bateComCardLM = !!(__motTokLM && chaveDoCardLM && chaveDoCardLM === __motTokLM);
+      var bateComPlacaLM = !!(__motTokLM && chaveDaPlacaLM && chaveDaPlacaLM === __motTokLM);
+      if (!bateComCardLM && !bateComPlacaLM) { telaLM(ov, '⚠️', 'Link inválido. Peça um link novo à central.'); return; }
       var todasConcluidasLM = !!(d.entregas && d.entregas.length && d.entregas.every(function (e) { return e && e.concluida; }));
       if (d.status === 'finalizado' || todasConcluidasLM) { telaLM(ov, '✅', 'Viagem finalizada — obrigado! Se precisar de um link novo, peça à central.'); return; }
-      if (Date.now() - d.linkMotorista.criadoEm > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou. Peça um link novo à central.'); return; }
+      var criadoEmEfetivoLM = bateComPlacaLM ? entryPlacaLM.criadoEm : (d.linkMotorista ? d.linkMotorista.criadoEm : 0);
+      if (Date.now() - (criadoEmEfetivoLM || 0) > VALIDADE_MS) { telaLM(ov, '⏰', 'Esse link expirou. Peça um link novo à central.'); return; }
+      if (bateComPlacaLM && entryPlacaLM) { entryPlacaLM.criadoEm = Date.now(); if (typeof save === 'function') save(); } // renova o prazo enquanto o link continua em uso ativo
 
       ov.innerHTML = '';
       var header = document.createElement('div');
@@ -6859,5 +6894,77 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
       clearInterval(timer);
     }
   }, 500);
+})();
+</script>
+
+<script>
+/* PATCH_SYNC_LINKSPORPLACA v1 (10/09/2026) - sincroniza S.linksPorPlaca (armazenamento
+   persistente do token do link do motorista POR PLACA, usado pelo PATCH_LINK_MOTORISTA
+   PERSISTENTE_POR_PLACA - edicao direta dentro do PATCH_LINK_MOTORISTA original, pedido do dono
+   "pode ser o mesmo link por viagem") entre dispositivos/abas, no MESMO padrao ja usado pro
+   campo "fotos" mais acima no arquivo (embrulha estadoLocal/puxarDoServidor, nao mexe no resto).
+   Sem isto, o campo ficaria preso ao localStorage de um unico navegador e o link persistente so
+   funcionaria enquanto o motorista abrisse a pagina a partir do MESMO computador que gerou o
+   link - o que nao e o caso real (o link e gerado no escritorio, usado no celular do motorista).
+   Para desfazer: apagar este bloco - S.linksPorPlaca para de sincronizar entre dispositivos (o
+   link persistente por placa deixa de funcionar entre aparelhos diferentes, nada mais quebra). */
+(function(){
+  if (window.__PATCH_SYNC_LINKSPORPLACA) return;
+  window.__PATCH_SYNC_LINKSPORPLACA = "v1";
+  if (typeof S === "undefined") return;
+
+  var LS_KEY_LINKSPLACA = "painel-viagens-linksplaca";
+  if (!S.linksPorPlaca) S.linksPorPlaca = {};
+  try {
+    var rawLP = (typeof HAS_LS !== "undefined" && HAS_LS) ? localStorage.getItem(LS_KEY_LINKSPLACA) : null;
+    if (rawLP) S.linksPorPlaca = Object.assign({}, JSON.parse(rawLP), S.linksPorPlaca);
+  } catch(e){}
+
+  function salvarLocalLP(){
+    try { if (typeof HAS_LS !== "undefined" && HAS_LS) localStorage.setItem(LS_KEY_LINKSPLACA, JSON.stringify(S.linksPorPlaca)); } catch(e){}
+  }
+
+  if (typeof estadoLocal === "function") {
+    var origEstadoLocalLP = estadoLocal;
+    window.estadoLocal = function(){
+      var e = origEstadoLocalLP();
+      e.linksPorPlaca = S.linksPorPlaca || {};
+      return e;
+    };
+  }
+
+  function mesclarEntradaLP(atual, novo){
+    if (!novo) return atual;
+    if (!atual || (novo.criadoEm||0) > (atual.criadoEm||0)) return novo;
+    return atual;
+  }
+
+  function puxarLinksPlaca(){
+    try {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      var c = lerSync();
+      sbLer(c).then(function(linha){
+        if (linha && linha.dados && linha.dados.linksPorPlaca) {
+          var remoto = linha.dados.linksPorPlaca;
+          var combinado = Object.assign({}, S.linksPorPlaca || {});
+          Object.keys(remoto).forEach(function(placa){
+            combinado[placa] = mesclarEntradaLP(combinado[placa], remoto[placa]);
+          });
+          S.linksPorPlaca = combinado;
+          salvarLocalLP();
+        }
+      }).catch(function(){});
+    } catch(e){}
+  }
+  if (typeof puxarDoServidor === "function") {
+    var origPuxarLP = puxarDoServidor;
+    window.puxarDoServidor = function(){
+      var p = origPuxarLP();
+      if (p && typeof p.then === "function") p.then(puxarLinksPlaca).catch(function(){});
+      else puxarLinksPlaca();
+      return p;
+    };
+  }
+  setTimeout(puxarLinksPlaca, 1500);
 })();
 </script>
