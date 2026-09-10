@@ -265,6 +265,24 @@ window.__VERSAO_PUBLICADA_PAINEL__ = "2026-09-08T19:37:27Z";
   .attn-item .tx b{font-family:'JetBrains Mono',monospace}
   .attn-item .tag{font-size:11px;color:var(--muted);white-space:nowrap}
   @media (max-width:720px){ .kpis{flex-wrap:wrap} .kpi{min-width:130px} }
+
+  /* Seletor de tema em botoes fixos (10/09/2026) */
+  .segtema{display:inline-flex;background:rgba(255,255,255,.08);border-radius:8px;padding:2px;gap:2px}
+  .segtema button{border:0;background:transparent;color:rgba(255,255,255,.7);cursor:pointer;
+    padding:7px 10px;border-radius:6px;font-size:13px;line-height:1}
+  .segtema button.on{background:rgba(255,255,255,.2);color:#fff}
+
+  /* Busca com icone + mais arredondada (10/09/2026) */
+  #q{border-radius:20px;padding-left:32px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:12px center;background-size:14px}
+
+  /* Cartao aparece com uma transicao leve, em vez de "pipocar" na tela (10/09/2026) */
+  @keyframes cardIn{ from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+  .card{animation:cardIn .22s ease-out}
+
+  /* Coluna vazia com um icone discreto em vez de so texto (10/09/2026) */
+  .empty-ic{font-size:19px;opacity:.4;margin-bottom:3px}
 </style>
 </head>
 <body>
@@ -1258,7 +1276,7 @@ function render(){
     h += '<div><div class="colhead" style="border-color:'+s.color+'">';
     h += "<span>"+s.icon+'</span><span class="name">'+s.label+'</span><span class="count">'+items.length+"</span></div>";
     h += '<div class="col">';
-    if(!items.length) h += '<div class="empty">vazio</div>';
+    if(!items.length) h += '<div class="empty"><div class="empty-ic">🗂️</div>vazio</div>';
     items.forEach(d=>{ h += cardHTML(d); });
     h += "</div></div>";
   });
@@ -2230,43 +2248,50 @@ html[data-tema="preto"] .ref.at{ color:#6BC98F; }
 html[data-tema="preto"] header{ background-color:#000000; border-bottom:1px solid #1C1C1F; }
 </style>
 <script>
-/* Botao de modo claro/escuro/preto (15/08/2026, +preto 10/09/2026) */
+/* Seletor de modo claro/escuro/preto (15/08/2026, +preto 10/09/2026, botoes fixos 10/09/2026) */
 (function(){
   var K="painel-viagens-tema";
-  var ORDEM=["claro","escuro","preto"];
-  var ROTULO={claro:"\u2600 Modo claro", escuro:"\uD83C\uDF19 Modo escuro", preto:"\u26AB Modo preto"};
-  var PROXIMO={claro:"\uD83C\uDF19 Modo escuro", escuro:"\u26AB Modo preto", preto:"\u2600 Modo claro"};
+  var OPCOES=[{t:"claro",ic:"\u2600",lb:"Claro"},{t:"escuro",ic:"\uD83C\uDF19",lb:"Escuro"},{t:"preto",ic:"\u26AB",lb:"Preto"}];
+  var ORDEM=OPCOES.map(function(o){ return o.t; });
   function aplicar(t){ document.documentElement.setAttribute("data-tema", t); }
   var atual="claro";
   try{ atual = localStorage.getItem(K) || "claro"; }catch(e){}
   if(ORDEM.indexOf(atual)===-1) atual="claro";
   aplicar(atual);
-  function rotular(b){
+  function marcar(grupo){
     var t = document.documentElement.getAttribute("data-tema");
-    b.textContent = PROXIMO[t] || PROXIMO.claro;
-    b.title = "Modo atual: " + (ROTULO[t]||ROTULO.claro).replace(/^\S+\s/,"") + " \u2014 clique para trocar";
+    Array.prototype.forEach.call(grupo.children, function(b){
+      b.classList.toggle("on", b.getAttribute("data-t")===t);
+    });
   }
   function montar(){
     var tools=document.querySelector(".tools");
     if(!tools) return false;
-    if(document.getElementById("btnTema")) return true;
-    var b=document.createElement("button");
-    b.id="btnTema"; b.type="button"; b.className="btn btn-ghost";
-    rotular(b);
-    b.addEventListener("click", function(){
-      var t = document.documentElement.getAttribute("data-tema");
-      var i = ORDEM.indexOf(t); if(i===-1) i=0;
-      var novo = ORDEM[(i+1) % ORDEM.length];
-      aplicar(novo);
-      try{ localStorage.setItem(K,novo); }catch(e){}
-      rotular(b);
+    if(document.getElementById("temaGroup")) return true;
+    var grupo=document.createElement("div");
+    grupo.id="temaGroup"; grupo.className="segtema"; grupo.title="Tema do painel";
+    OPCOES.forEach(function(o){
+      var b=document.createElement("button");
+      b.type="button"; b.setAttribute("data-t",o.t); b.title=o.lb;
+      b.textContent=o.ic;
+      b.addEventListener("click", function(){
+        aplicar(o.t);
+        try{ localStorage.setItem(K,o.t); }catch(e){}
+        marcar(grupo);
+      });
+      grupo.appendChild(b);
     });
+    marcar(grupo);
     var sair=document.getElementById("btnSair");
-    if(sair && sair.parentElement===tools) tools.insertBefore(b, sair); else tools.appendChild(b);
+    if(sair && sair.parentElement===tools) tools.insertBefore(grupo, sair); else tools.appendChild(grupo);
     return true;
   }
   if(!montar()) { var t=setInterval(function(){ if(montar()) clearInterval(t); },200); }
-  setInterval(montar, 3000);   /* se algo redesenhar o cabecalho, o botao volta */
+  setInterval(function(){
+    montar();
+    var g=document.getElementById("temaGroup");
+    if(g) marcar(g);
+  }, 3000);   /* se algo redesenhar o cabecalho, o seletor volta */
 })();
 </script>
 </body>
@@ -2922,6 +2947,18 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
     fr.onerror = function(){ cb(null); };
     fr.readAsDataURL(file);
   }
+  var CORES_AVATAR = ["#4A2FD1","#1E7FA0","#2E9C5C","#C6791E","#5B3FE0","#C0403A","#3B8C82"];
+  function corAvatar(nome){
+    var h = 0;
+    for (var i=0;i<nome.length;i++){ h = (h*31 + nome.charCodeAt(i)) >>> 0; }
+    return CORES_AVATAR[h % CORES_AVATAR.length];
+  }
+  function iniciaisAvatar(nome){
+    var partes = String(nome||"").trim().split(/\s+/).filter(Boolean);
+    var a = partes[0] ? partes[0][0] : "";
+    var b = partes.length>1 ? partes[partes.length-1][0] : "";
+    return (a+b).toUpperCase();
+  }
   window.escolherFoto = function(nome){
     var inp = document.createElement("input");
     inp.type = "file"; inp.accept = "image/*";
@@ -2959,9 +2996,9 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
           el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); if(confirm("Remover a foto de " + n + "?")) window.setFoto(n, null); }; })(nome);
         } else {
           el = document.createElement("div");
-          el.textContent = "\uD83D\uDCF7";
+          el.textContent = iniciaisAvatar(nome);
           el.title = "Adicionar foto de " + nome;
-          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;margin-right:9px;flex:0 0 auto;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;opacity:.5;border:2px dashed rgba(255,255,255,.3);background:rgba(255,255,255,.05)";
+          el.style.cssText = "width:" + TAM + "px;height:" + TAM + "px;border-radius:50%;margin-right:9px;flex:0 0 auto;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:'Big Shoulders Display',sans-serif;letter-spacing:.4px;color:#fff;background:" + corAvatar(nome) + ";border:2px solid rgba(255,255,255,.28)";
           el.onclick = (function(n){ return function(ev){ ev.stopPropagation(); window.escolherFoto(n); }; })(nome);
         }
         el.className = "fotoMot";
