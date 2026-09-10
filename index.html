@@ -1116,7 +1116,8 @@ function cardHTML(d){
   h += '<p class="drv"><span class="sinal '+(on?"on":"off")+'" title="'+esc(textoSinal(d))+'"></span>'+esc(d.motorista)+"</p>";
   h += '<div class="tags"><span class="plate">'+esc(d.placa)+"</span>";
   if(d.mdfe) h += '<span class="mdfe">MDF-e '+esc(d.mdfe)+"</span>";
-  if(rz.total) h += '<span class="cnt'+(rz.feitas===rz.total?" done":"")+'" title="Entregas concluídas / total">📦 '+rz.feitas+"/"+rz.total+"</span>";
+  /* contador "📦 X/Y" removido daqui (10/09/2026) -- duplicava o cabeçalho
+     "📦 Entregas (X/Y)" que já aparece na seção de entregas, logo abaixo. */
   h += "</div></div>";
   h += '<button class="icobtn" data-act="del" data-id="'+d.id+'" title="Remover (vai para o histórico)">🗑</button></div>';
   h += '<div class="dots">';
@@ -2416,25 +2417,12 @@ try{
     }catch(e){}
   }
   function __pintarTempos(){
+    /* Badge "ficou Xh"/"Xh no cliente" removido daqui (10/09/2026) -- duplicava o
+       badge "⏱ Xh Ymin" que o PATCH_PROXIMO_E_HORAS (injetarHorasEntrega, mais abaixo
+       no arquivo) já desenha no mesmo .emeta, lendo o mesmo d.tempos. Só limpa
+       qualquer chip antigo que tenha ficado de uma versão anterior do painel. */
     try{
-      if(typeof S==="undefined") return;
-      var agora=Date.now();
-      document.querySelectorAll(".erow input[data-act=tog]").forEach(function(cb){
-        var id=cb.getAttribute("data-id"), i=Number(cb.getAttribute("data-i"));
-        var d=S.drivers.find(function(x){return x&&x.id===id});
-        if(!d || !d.entregas || !d.entregas[i]) return;
-        var t=d.tempos && d.tempos[__tKey(d.entregas[i])];
-        var meta=cb.parentElement && cb.parentElement.querySelector(".emeta");
-        if(!meta) return;
-        var chip=meta.querySelector(".tempo-chip");
-        if(!t || (!(t.total>0) && !t.desde)){ if(chip) chip.remove(); return; }
-        var vivo=!!t.desde;
-        var ms=(t.total||0)+(vivo? agora-t.desde : 0);
-        var txt=vivo? ("⏱ "+__tFmt(ms)+" no cliente") : ("⏱ ficou "+__tFmt(ms));
-        if(!chip){ chip=document.createElement("span"); chip.className="tempo-chip"; meta.appendChild(chip); }
-        chip.textContent=txt;
-        chip.className="tempo-chip"+(vivo?" vivo":"");
-      });
+      document.querySelectorAll(".tempo-chip").forEach(function(c){ c.remove(); });
     }catch(e){}
   }
   var __st=document.createElement("style");
@@ -3744,11 +3732,9 @@ setTimeout(function(){ _amostrarTemp(); _checarAvisos(); }, 12000);
       if(score < 1) return; // ponto perto do caminhao nao bate com nenhuma entrega pendente
       var raioCliente = window.RAIO_CLIENTE_M || 200;
       if(score >= 2 && dist <= raioCliente){
-        var s1 = document.createElement("span");
-        s1.className = "chip"; s1.setAttribute("data-proxchip","1");
-        s1.style.cssText = "background:#7C6FA8;color:#fff";
-        s1.textContent = "📍 No cliente";
-        chips.appendChild(s1);
+        // chip "📍 No cliente" removido daqui (10/09/2026) -- duplicava o selo
+        // "📍 no ponto" que já aparece na linha da entrega correspondente, na lista
+        // de Entregas do mesmo card.
       } else if(dist <= RAIO_PROXIMO_M){
         var s2 = document.createElement("span");
         s2.className = "chip"; s2.setAttribute("data-proxchip","1");
