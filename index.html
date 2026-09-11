@@ -7144,3 +7144,221 @@ body{
     url('assets/fundo-cruz.jpg') center/cover no-repeat fixed;
 }
 </style>
+
+<script>
+/* PATCH_FINALIZADO_BLINDAGEM v1 (Claude, 11/09/2026) - pendencia de prioridade alta do briefing:
+   "card novo, 0 entregas, sem rastreio vira finalizado sozinho (as vezes chegando a sumir)
+   mesmo com o MDF-e aberto no BSoft". Causas achadas lendo o codigo publicado:
+   (1) PATCH_DEDUP_PLACA (02/09) escolhe, entre 2 cards da MESMA placa, o que tem mdfe e MAIS
+       entregas - sem olhar status. Quando a viagem nova de uma placa e criada enquanto o card
+       FINALIZADO da viagem anterior ainda esta no quadro (bsoftAberto=true segura ele la), o
+       card antigo (com entregas) vence e o card novo (0 entregas) e APAGADO a cada save() e a
+       cada sync - na tela, a placa "vira finalizado". Corrigido: card ativo sempre vence card
+       finalizado da mesma placa (o finalizado, da viagem anterior, sai do quadro).
+   (2) aplicarStatusAuto (PATCH_ENTREGAS) forca "finalizado" quando d._entregasOk=true, mas so
+       recalcula esse campo pra card COM rastreio - card sem rastreio mantinha o valor velho
+       (ex.: card restaurado/reaproveitado da viagem anterior, entregas zeradas) e finalizava
+       sozinho. Corrigido: recalcula _entregasOk de TODOS os cards antes (0 entregas = false).
+   (3) Trava geral (regra do dono: BSoft e a autoridade): nenhuma regra automatica pode LEVAR um
+       card pra "finalizado" a menos que (a) todas as entregas (1 ou mais) estejam confirmadas,
+       ou (b) o BSoft ja tenha confirmado o MDF-e fechado (bsoftAberto === false). Finalizar na
+       mao (botao "fin") continua funcionando normal - isto so vale pras regras automaticas.
+   (4) dados.placasEncerradas (memoria do robo painel-motor pra nao recriar placa que ele acabou
+       de remover) era apagado a cada envio do navegador, porque estadoLocal() nao inclui o campo.
+       Agora o navegador preserva e devolve o campo.
+   O robo scripts/painel-motor.js recebe a mesma trava em patch proprio (ele ainda finalizava por
+   semNf, regra que o dono mandou tirar em 28/08 e que so tinha sido tirada do navegador).
+   Para desfazer: apague este bloco inteiro. */
+(function(){
+  if (window.__PATCH_FINALIZADO_BLINDAGEM) return;
+  window.__PATCH_FINALIZADO_BLINDAGEM = "v1";
+
+  function todasConcluidasFB(d){
+    var l = (d && Array.isArray(d.entregas)) ? d.entregas : [];
+    return l.length > 0 && l.every(function(e){ return !!(e && e.concluida); });
+  }
+  function podeAutoFinalizarFB(d){
+    return todasConcluidasFB(d) || (d && d.bsoftAberto === false);
+  }
+  function plFB(p){
+    return (typeof normalizePlaca === "function") ? normalizePlaca(p) : String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  }
+
+  // (3) trava em statusAutomatico - por fora de TODOS os wrappers anteriores
+  if (typeof statusAutomatico === "function") {
+    var _saAntesFB = statusAutomatico;
+    window.statusAutomatico = function(d){
+      var r = _saAntesFB.apply(this, arguments);
+      if (r === "finalizado" && d && d.status !== "finalizado" && !podeAutoFinalizarFB(d)) {
+        return d.status || "carregando";
+      }
+      return r;
+    };
+  }
+
+  // (2) + (3) em aplicarStatusAuto
+  if (typeof aplicarStatusAuto === "function") {
+    var _asaAntesFB = aplicarStatusAuto;
+    window.aplicarStatusAuto = function(){
+      var lista = (typeof S !== "undefined" && Array.isArray(S.drivers)) ? S.drivers : [];
+      var antes = [];
+      lista.forEach(function(d){
+        if (!d) return;
+        d._entregasOk = todasConcluidasFB(d);
+        antes.push([d, d.status]);
+      });
+      var concl0 = new Map();
+      lista.forEach(function(d){
+        (d && Array.isArray(d.entregas) ? d.entregas : []).forEach(function(e){ if (e) concl0.set(e, !!e.concluida); });
+      });
+      var r = _asaAntesFB.apply(this, arguments);
+      // confirmacao automatica de entrega foi proibida pelo dono (31/08) - desfaz qualquer uma
+      // que tenha escapado (o PATCH_REMOVE_ENTREGA_AUTO_CONFIRMA so desfazia se o valor anterior
+      // fosse exatamente false; com concluida ausente/undefined ela passava)
+      lista.forEach(function(d){
+        if (!d || !Array.isArray(d.entregas)) return;
+        var mexeu = false;
+        d.entregas.forEach(function(e){
+          if (e && e.concluida && e._auto && concl0.get(e) === false) {
+            e.concluida = false; delete e._auto; delete e._concluidaEm; mexeu = true;
+          }
+        });
+        if (mexeu || d._entregasOk) d._entregasOk = todasConcluidasFB(d);
+      });
+      antes.forEach(function(par){
+        var d = par[0], st0 = par[1];
+        if (d.status === "finalizado" && st0 !== "finalizado" && !podeAutoFinalizarFB(d)) {
+          d.status = st0 || "carregando";
+          d.mdfePendente = false;
+        }
+      });
+      return r;
+    };
+  }
+
+  // (1) dedup por placa: ativo vence finalizado
+  if (typeof window.dedupPorPlaca === "function") {
+    var _dedupAntesFB = window.dedupPorPlaca;
+    window.dedupPorPlaca = function(lista){
+      if (!Array.isArray(lista)) return _dedupAntesFB(lista);
+      var ativas = {};
+      lista.forEach(function(d){
+        if (d && d.status !== "finalizado") { var p = plFB(d.placa); if (p) ativas[p] = true; }
+      });
+      var filtrada = lista.filter(function(d){
+        if (!d || d.status !== "finalizado") return true;
+        var p = plFB(d.placa);
+        return !(p && ativas[p]);
+      });
+      return _dedupAntesFB(filtrada);
+    };
+  }
+
+  // (4) preserva dados.placasEncerradas
+  var LIMITE_PE_FB = 90 * 24 * 3600 * 1000;
+  function unirPE_FB(a, b){
+    var o = {}, agora = Date.now();
+    [a, b].forEach(function(m){
+      if (!m || typeof m !== "object") return;
+      Object.keys(m).forEach(function(p){
+        var t = Number(m[p]) || 0;
+        if (t && agora - t <= LIMITE_PE_FB && (!o[p] || t > o[p])) o[p] = t;
+      });
+    });
+    return o;
+  }
+  if (typeof S !== "undefined" && (!S.placasEncerradas || typeof S.placasEncerradas !== "object")) S.placasEncerradas = {};
+  if (typeof window.sbLer === "function") {
+    var _sbLerAntesPE = window.sbLer;
+    window.sbLer = async function(){
+      var linha = await _sbLerAntesPE.apply(this, arguments);
+      try {
+        if (linha && linha.dados && linha.dados.placasEncerradas && typeof S !== "undefined") {
+          S.placasEncerradas = unirPE_FB(S.placasEncerradas, linha.dados.placasEncerradas);
+        }
+      } catch(e){}
+      return linha;
+    };
+  }
+  if (typeof window.estadoLocal === "function") {
+    var _elAntesPE = window.estadoLocal;
+    window.estadoLocal = function(){
+      var e = _elAntesPE.apply(this, arguments);
+      try { if (e && typeof e === "object" && typeof S !== "undefined") e.placasEncerradas = unirPE_FB(S.placasEncerradas, null); } catch(x){}
+      return e;
+    };
+  }
+})();
+</script>
+
+<script>
+/* PATCH_EGRESS_CACHE_SBLER v1 (Claude, 11/09/2026) - achado checando o consumo do Supabase
+   (plano Free, 5 GB de egress/mes): em 11/09 o ciclo (28/08-28/09) ja estava em 3,9 GB. Causa:
+   cada puxarDoServidor() (a cada 5 s desde hoje) dispara, alem da propria leitura, mais 4
+   leituras COMPLETAS da linha (~1 MB, ~190 KB comprimido) - fotos, rastreioVisto, sessoes e
+   linksPorPlaca - mesmo quando nada mudou no servidor (medido: 12 leituras completas em 30 s
+   numa unica aba). O PATCH_EGRESS_LEVE so protegia a leitura principal.
+   Correcao: sbLer() agora pergunta primeiro so o carimbo (atualizado_em, poucos bytes); se o
+   carimbo e o mesmo da ultima leitura completa desta aba, devolve uma copia dessa leitura em
+   vez de baixar tudo de novo. Leituras simultaneas compartilham a mesma requisicao. Os dados
+   devolvidos sao exatamente os mesmos de uma leitura nova (so muda quando o carimbo muda, e
+   toda gravacao - navegador ou robo - grava carimbo novo). Depois de cada gravacao desta aba o
+   cache e descartado. Para desfazer: apague este bloco inteiro. */
+(function(){
+  if (window.__PATCH_EGRESS_CACHE_SBLER) return;
+  window.__PATCH_EGRESS_CACHE_SBLER = "v1";
+  if (typeof window.sbLer !== "function") return;
+
+  var _sbLerAntesCache = window.sbLer;
+  var cache = null;      // { chave, carimbo, texto }
+  var emVoo = {};        // chave -> Promise<texto|null>
+  var geracao = 0;       // muda a cada gravacao desta aba
+
+  function chaveDe(c){ return String((c && c.url) || "").replace(/\/+$/,"") + "|" + String((c && c.quadro) || "transload"); }
+
+  async function lerCarimbo(c){
+    var u = String(c.url).replace(/\/+$/,"") + "/rest/v1/painel?id=eq." + encodeURIComponent(c.quadro || "transload") + "&select=atualizado_em";
+    var r = await fetch(u, { headers: sbHeaders(c) });
+    if (!r.ok) throw new Error("HTTP " + r.status + " ao checar carimbo");
+    var j = await r.json();
+    return Array.isArray(j) && j.length ? j[0].atualizado_em : null;
+  }
+
+  async function lerTexto(c, chave){
+    var ger = geracao;
+    var carimbo = null;
+    try { carimbo = await lerCarimbo(c); } catch(e){ carimbo = null; }
+    if (carimbo && cache && cache.chave === chave && cache.carimbo === carimbo && ger === geracao) {
+      return cache.texto;
+    }
+    var linha = await _sbLerAntesCache(c);
+    var texto = JSON.stringify(linha === undefined ? null : linha);
+    if (linha && linha.atualizado_em && ger === geracao) {
+      cache = { chave: chave, carimbo: linha.atualizado_em, texto: texto };
+    }
+    return texto;
+  }
+
+  window.sbLer = async function(c){
+    if (!c || !c.url || typeof sbHeaders !== "function") return _sbLerAntesCache.apply(this, arguments);
+    var chave = chaveDe(c);
+    if (!emVoo[chave]) {
+      var pr = lerTexto(c, chave);
+      emVoo[chave] = pr;
+      pr.then(function(){ if (emVoo[chave] === pr) delete emVoo[chave]; },
+              function(){ if (emVoo[chave] === pr) delete emVoo[chave]; });
+    }
+    var texto = await emVoo[chave];
+    return JSON.parse(texto);
+  };
+
+  if (typeof window.sbGravar === "function") {
+    var _sbGravarAntesCache = window.sbGravar;
+    window.sbGravar = async function(){
+      geracao++; cache = null; emVoo = {};
+      try { return await _sbGravarAntesCache.apply(this, arguments); }
+      finally { geracao++; cache = null; emVoo = {}; }
+    };
+  }
+})();
+</script>
