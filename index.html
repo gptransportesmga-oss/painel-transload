@@ -1707,7 +1707,7 @@ function ligarSync(){
      tudo desatualizado. Reduzido pra 20s, e alem disso agora forca um pull IMEDIATO toda vez que
      a aba volta a ficar visivel (troca de aba, celular sai da tela de bloqueio, navegador volta
      de segundo plano) - nao fica esperando o proximo intervalo pra "colocar em dia". */
-  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 5000);
+  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 60000);
 }
 function pararSync(){ if(syncTimer){ clearInterval(syncTimer); syncTimer = null; } }
 if (typeof document !== "undefined" && !window.__painelPullAoFicarVisivel) {
@@ -7360,5 +7360,75 @@ body{
       finally { geracao++; cache = null; emVoo = {}; }
     };
   }
+})();
+</script>
+
+<script>
+/* PATCH_REALTIME_PUSH v1 (11/09/2026) - pedido do dono: "toda vez que for anexado ou confirmada
+   entrega o nosso painel deve atualizar instantaneamente". Ate agora so tinhamos polling (reduzido
+   de 20s pra 5s mais cedo hoje). Esse patch liga o Supabase Realtime (Database > Publications >
+   supabase_realtime, tabela "painel" - Replication habilitado agora, 11/09/2026, testado ao vivo:
+   evento chegou em 79ms depois de um UPDATE real) pra receber um push assim que QUALQUER save
+   (motorista ou escritorio) grava na linha do quadro, e disparar puxarDoServidor() na hora, em vez
+   de esperar o proximo ciclo do polling.
+   Como o Realtime virou o caminho principal pra "instantaneo", o polling (nesta mesma publicacao)
+   voltou de 5s pra 60000ms (60s) - so fica como rede de seguranca caso o Realtime desconecte, o
+   que tambem ajuda a aliviar o egress do Supabase (achado por outra sessao hoje: o plano Free
+   estava perto do limite mensal por causa do polling frequente). O polling nao foi removido, so
+   deixou de ser o caminho principal.
+   Respeita a mesma flag __syncPausadoLM do PATCH_LINK_MOTORISTA_PAUSA_SYNC_VISIBILITY: no link do
+   motorista, depois que o sync pausa (4s), o Realtime tambem para de disparar puxarDoServidor()
+   pra nao reintroduzir o bug de referencia orfa que aquele patch resolveu. */
+(function () {
+  if (window.__PATCH_REALTIME_PUSH) return;
+  window.__PATCH_REALTIME_PUSH = "v1";
+  var rtClient = null, rtCanal = null, rtScriptCarregando = null;
+
+  function carregarSupabaseJs() {
+    if (window.supabase && window.supabase.createClient) return Promise.resolve();
+    if (rtScriptCarregando) return rtScriptCarregando;
+    rtScriptCarregando = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("falhou carregar supabase-js")); };
+      document.head.appendChild(s);
+    });
+    return rtScriptCarregando;
+  }
+
+  function pararRealtime() {
+    try { if (rtCanal && rtClient) rtClient.removeChannel(rtCanal); } catch (e) {}
+    rtCanal = null;
+  }
+
+  function iniciarRealtime() {
+    if (typeof syncLigado !== "function" || !syncLigado()) { pararRealtime(); return; }
+    var c = lerSync();
+    if (!c || !c.url || !c.key) return;
+    if (rtCanal) return;
+    carregarSupabaseJs().then(function () {
+      if (typeof syncLigado !== "function" || !syncLigado()) return;
+      try {
+        if (!rtClient) rtClient = window.supabase.createClient(c.url, c.key);
+        rtCanal = rtClient
+          .channel("painel-realtime-" + (c.quadro || "transload"))
+          .on("postgres_changes", { event: "*", schema: "public", table: "painel", filter: "id=eq." + (c.quadro || "transload") }, function () {
+            if (window.__syncPausadoLM) return;
+            if (typeof puxarDoServidor === "function") puxarDoServidor().catch(function () {});
+          })
+          .subscribe();
+      } catch (eRt) { /* sem realtime, o polling continua cobrindo */ }
+    }).catch(function () { /* sem internet pra CDN, o polling continua cobrindo */ });
+  }
+
+  var ligarSyncBaseRt = window.ligarSync, pararSyncBaseRt = window.pararSync;
+  if (typeof ligarSyncBaseRt === "function") {
+    window.ligarSync = function () { ligarSyncBaseRt(); iniciarRealtime(); };
+  }
+  if (typeof pararSyncBaseRt === "function") {
+    window.pararSync = function () { pararSyncBaseRt(); pararRealtime(); };
+  }
+  iniciarRealtime();
 })();
 </script>
