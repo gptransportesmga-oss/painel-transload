@@ -679,6 +679,64 @@ function rodarMotor(dados, mapeados) {
 }
 
 // ---------------------------------------------------------------------------
+// PATCH_FINALIZADO_BLINDAGEM v1 (Claude, 11/09/2026) - mesma trava do index.html (bloco de
+// mesmo nome), aplicada aqui no robo da nuvem, que roda a cada 5 min sem navegador:
+//  (a) semNf NUNCA finaliza card sozinho - o dono mandou tirar essa regra em 28/08/2026
+//      (PATCH_REMOVE_SEMNF_AUTOFINALIZA do navegador), mas ela continuava ativa aqui: um card
+//      com semNf=true (import "PLACA | FIM" ou fila do sync BSoft) virava "finalizado" em ate
+//      5 min e, sem bsoftAberto=true, era APAGADO 60 min depois.
+//  (b) trava geral: nenhuma regra automatica leva um card pra "finalizado" a menos que todas
+//      as entregas (1+) estejam confirmadas ou o BSoft ja tenha confirmado o MDF-e fechado
+//      (bsoftAberto === false). Regra do dono: BSoft e a autoridade.
+//  (c) card FINALIZADO da viagem anterior sai do quadro quando ja existe card ATIVO da mesma
+//      placa - antes, fundirDuplicadas() escolhia o card "mais rico" (mdfe + entregas), que
+//      normalmente era o antigo finalizado, e a viagem nova (0 entregas) era engolida por ele.
+//      Mesma regra do navegador (PATCH_FINALIZADO_BLINDAGEM, dedup por placa).
+// So acrescenta codigo (reatribui as funcoes declaradas acima) - para desfazer, apague este bloco.
+// ---------------------------------------------------------------------------
+(function blindagemFinalizado() {
+  function todasConcluidas(d) {
+    const l = (d && Array.isArray(d.entregas)) ? d.entregas : [];
+    return l.length > 0 && l.every((e) => !!(e && e.concluida));
+  }
+  function podeAutoFinalizar(d) {
+    return todasConcluidas(d) || (d && d.bsoftAberto === false);
+  }
+
+  const statusAutomaticoBase = statusAutomatico;
+  statusAutomatico = function (d) {
+    let r;
+    if (d && d.semNf) {
+      const salvo = d.semNf;
+      d.semNf = false;
+      try { r = statusAutomaticoBase(d); } finally { d.semNf = salvo; }
+    } else {
+      r = statusAutomaticoBase(d);
+    }
+    if (r === 'finalizado' && d && d.status !== 'finalizado' && !podeAutoFinalizar(d)) {
+      return d.status || 'carregando';
+    }
+    return r;
+  };
+
+  const rodarMotorBase = rodarMotor;
+  rodarMotor = function (dados, mapeados) {
+    const extras = [];
+    const lista = Array.isArray(dados.motoristas) ? dados.motoristas : [];
+    const ativas = new Set();
+    lista.forEach((d) => { if (d && d.status !== 'finalizado') { const p = normalizePlaca(d.placa); if (p) ativas.add(p); } });
+    const superados = lista.filter((d) => d && d.status === 'finalizado' && ativas.has(normalizePlaca(d.placa)));
+    if (superados.length) {
+      dados.motoristas = lista.filter((d) => superados.indexOf(d) === -1);
+      superados.forEach((d) => extras.push(formatarPlaca(normalizePlaca(d.placa)) +
+        ': card finalizado da viagem anterior (MDF-e ' + (d.mdfe || '-') + ') retirado - ja existe card ativo da mesma placa'));
+    }
+    const eventos = rodarMotorBase(dados, mapeados) || [];
+    return extras.concat(eventos);
+  };
+})();
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
