@@ -5230,6 +5230,9 @@ function renderEntregaLM(container, d, idx, ov) {
     d.entregas[idxAtualPRE] = tmp;
     touch(d);
     save();
+    /* PATCH_LINK_MOTORISTA_ENVIO_IMEDIATO v1 (11/09/2026) - ver comentario na confirmacao de
+       entrega: forca o envio pro servidor na hora, sem esperar o debounce de 1.8s. */
+    if (typeof enviarAoServidor === 'function') { enviarAoServidor().catch(function () {}); }
     redesenharListaLM(container, d, ov);
   });
   var downPRE = document.createElement('button');
@@ -5256,6 +5259,9 @@ function renderEntregaLM(container, d, idx, ov) {
     d.entregas[idxAtualPRE] = tmp;
     touch(d);
     save();
+    /* PATCH_LINK_MOTORISTA_ENVIO_IMEDIATO v1 (11/09/2026) - ver comentario na confirmacao de
+       entrega: forca o envio pro servidor na hora, sem esperar o debounce de 1.8s. */
+    if (typeof enviarAoServidor === 'function') { enviarAoServidor().catch(function () {}); }
     redesenharListaLM(container, d, ov);
   });
   arrowsPRE.appendChild(upPRE);
@@ -5315,6 +5321,12 @@ function renderEntregaLM(container, d, idx, ov) {
         touch(d);
         if (d.entregas.every(function (x) { return x.concluida; })) d.status = 'finalizado';
         save();
+        /* PATCH_LINK_MOTORISTA_ENVIO_IMEDIATO v1 (11/09/2026) - antes o envio pro
+           servidor so acontecia pelo debounce padrao de marcarAlteracao() (1.8s). Se o motorista
+           confirmar a entrega e guardar o celular logo em seguida (comum, ele confirma e guarda
+           o celular pra voltar a dirigir), o sistema do celular pode suspender a aba antes do
+           debounce disparar e o envio pendente demora a sair. Forca o envio na hora, sem esperar. */
+        if (typeof enviarAoServidor === 'function') { enviarAoServidor().catch(function () {}); }
         redesenharArea();
         checarTudoFeitoLM(ov, d);
       });
