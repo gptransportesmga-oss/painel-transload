@@ -4161,6 +4161,41 @@ html[data-tema="preto"] .badge-next{ background:rgba(59,140,130,.28)!important; 
 })();
 </script>
 <script>
+/* PATCH_ENVIO_SERIALIZADO v1 (11/09/2026) - achado ao vivo testando o envio imediato do link do
+   motorista (PATCH_LINK_MOTORISTA_ENVIO_IMEDIATO): antes, nada impedia que duas chamadas de
+   enviarAoServidor() rodassem SOBREPOSTAS (ex: o envio imediato do clique + o envio do debounce
+   de 1.8s, quase ao mesmo tempo) - cada uma faz seu proprio "puxa e mescla antes de mandar"
+   (PATCH_SYNC_SEGURO) de forma independente, e duas dessas rodando ao mesmo tempo podem se
+   atropelar e embaralhar os dados salvos (confirmado ao vivo: a ORDEM das entregas de um
+   motorista real mudou sozinha depois de um teste com dois envios proximos, sem ninguem ter
+   mexido na ordem). Este patch garante que so existe UM envio em voo por vez: se chegar uma
+   chamada nova enquanto outra ainda esta rodando, ela nao dispara outro ciclo em paralelo - so
+   marca "manda de novo assim que a atual terminar", garantindo que o estado mais recente sempre
+   sai, sem sobrepor duas idas ao servidor ao mesmo tempo. */
+(function(){
+  if (typeof window.enviarAoServidor === "function" && !window.__PATCH_ENVIO_SERIALIZADO) {
+    var _enviarSerialPES = window.enviarAoServidor;
+    var emVooPES = null;
+    var pendentePES = false;
+    window.enviarAoServidor = function(){
+      if (emVooPES) {
+        pendentePES = true;
+        return emVooPES;
+      }
+      emVooPES = _enviarSerialPES.apply(this, arguments).catch(function(){}).then(function(){
+        emVooPES = null;
+        if (pendentePES) {
+          pendentePES = false;
+          return window.enviarAoServidor();
+        }
+      });
+      return emVooPES;
+    };
+    window.__PATCH_ENVIO_SERIALIZADO = "v1";
+  }
+})();
+</script>
+<script>
 /* PATCH_SESSOES v1 (21/08/2026) — pedido do dono: poder ver quem está com o Painel aberto e
    derrubar (forçar sair/recarregar) qualquer sessão à distância. Não existia isso antes — o
    login era só uma senha local, sem lista de quem estava conectado.
