@@ -1707,7 +1707,7 @@ function ligarSync(){
      tudo desatualizado. Reduzido pra 20s, e alem disso agora forca um pull IMEDIATO toda vez que
      a aba volta a ficar visivel (troca de aba, celular sai da tela de bloqueio, navegador volta
      de segundo plano) - nao fica esperando o proximo intervalo pra "colocar em dia". */
-  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 20000);
+  syncTimer = setInterval(()=>{ puxarDoServidor().catch(()=>{}); }, 5000);
 }
 function pararSync(){ if(syncTimer){ clearInterval(syncTimer); syncTimer = null; } }
 if (typeof document !== "undefined" && !window.__painelPullAoFicarVisivel) {
