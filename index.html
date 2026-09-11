@@ -6230,6 +6230,58 @@ Para desfazer: apagar este bloco - os botoes somem do painel principal, nada mai
 </script>
 
 <script>
+/* PATCH_MERGE_PRESERVA_ENTREGAS_CONFIRMADAS v1 (11/09/2026) - achado ao vivo: motorista confirmou
+   entrega pelo link (GEOVANE CARVALHO DA SILVA / AIL-6D84, entrega OESA COMERCIO) e a confirmacao
+   sumiu do painel do escritorio. Mesma causa raiz de PATCH_MERGE_PRESERVA_LINKMOTORISTA e
+   PATCH_MERGE_UNIAO_ANEXOS: mesclarQuadro() escolhe o motorista INTEIRO de uma fonte so (local ou
+   remoto) comparando updatedAt, jogando fora TODOS os campos do lado perdedor - inclusive
+   entregas[].concluida. Isso some quando duas fontes salvam quase ao mesmo tempo (ex: celular do
+   motorista confirmando vs. PC do escritorio com rastreio automatico salvando por tras) e o lado
+   que "ganha" o merge e o que NAO tem a confirmacao.
+   Corrigido do mesmo jeito ja comprovado: embrulha window.mesclarQuadro (o que ela for NESTE PONTO
+   do arquivo - depois do PATCH_MERGE_UNIAO_ANEXOS_V2, o ultimo embrulho ate aqui) e, depois que ela
+   decide o vencedor de cada motorista, para cada entrega (casada por chave = slug(cliente+" "+destino)):
+   se a copia vencedora NAO esta concluida mas ou a local ou a remota estao, "cola" concluida:true
+   (e concluidaEm/concluidaPor de quem tinha) no resultado - nunca desmarca uma entrega que estava
+   concluida, so preenche o que faltou. Nunca mexe em mais nenhum campo. */
+(function () {
+  if (window.__PATCH_MERGE_PRESERVA_ENTREGAS_CONFIRMADAS) return;
+  window.__PATCH_MERGE_PRESERVA_ENTREGAS_CONFIRMADAS = "v1";
+  var mesclarQuadroBaseEntregas = window.mesclarQuadro;
+  if (typeof mesclarQuadroBaseEntregas !== "function" || typeof slug !== "function") return;
+  window.mesclarQuadro = function (local, remoto) {
+    var resultado = mesclarQuadroBaseEntregas(local, remoto);
+    try {
+      var porIdLocalEnt = {}, porIdRemotoEnt = {};
+      (local && local.motoristas || []).forEach(function (d) { if (d && d.id) porIdLocalEnt[d.id] = d; });
+      (remoto && remoto.motoristas || []).forEach(function (d) { if (d && d.id) porIdRemotoEnt[d.id] = d; });
+      (resultado.motoristas || []).forEach(function (d) {
+        if (!d || !d.id || !d.entregas || !d.entregas.length) return;
+        var lEnt = porIdLocalEnt[d.id], rEnt = porIdRemotoEnt[d.id];
+        if (!lEnt && !rEnt) return;
+        var porChaveL = {}, porChaveR = {};
+        (lEnt && lEnt.entregas || []).forEach(function (e) { if (e) porChaveL[slug(e.cliente + " " + e.destino)] = e; });
+        (rEnt && rEnt.entregas || []).forEach(function (e) { if (e) porChaveR[slug(e.cliente + " " + e.destino)] = e; });
+        d.entregas.forEach(function (e) {
+          if (!e || e.concluida) return;
+          var chaveEnt = slug(e.cliente + " " + e.destino);
+          var candidata = (porChaveL[chaveEnt] && porChaveL[chaveEnt].concluida) ? porChaveL[chaveEnt]
+                         : (porChaveR[chaveEnt] && porChaveR[chaveEnt].concluida) ? porChaveR[chaveEnt]
+                         : null;
+          if (candidata) {
+            e.concluida = true;
+            e.concluidaEm = candidata.concluidaEm || Date.now();
+            e.concluidaPor = candidata.concluidaPor || 'sincronismo';
+          }
+        });
+      });
+    } catch (eMergeEntregasV1) { /* nao trava o painel se algo der errado aqui */ }
+    return resultado;
+  };
+})();
+</script>
+
+<script>
 /* PATCH_ANEXOS_INDEXEDDB v1 - 03/09/2026
    Motivo: localStorage do navegador tem limite de ~5MB por site (limite do proprio Chrome).
    Anexos de NF/DANFE guardados como texto (base64) dentro do mesmo blob de d.anexosEntrega
