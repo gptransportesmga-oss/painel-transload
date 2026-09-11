@@ -1713,6 +1713,7 @@ function pararSync(){ if(syncTimer){ clearInterval(syncTimer); syncTimer = null;
 if (typeof document !== "undefined" && !window.__painelPullAoFicarVisivel) {
   window.__painelPullAoFicarVisivel = true;
   document.addEventListener("visibilitychange", function(){
+    if (window.__syncPausadoLM) return; /* PATCH_LINK_MOTORISTA_PAUSA_SYNC_VISIBILITY v1 (11/09/2026) */
     if (document.visibilityState === "visible" && typeof puxarDoServidor === "function") {
       puxarDoServidor().catch(function(){});
     }
@@ -5209,10 +5210,24 @@ function renderEntregaLM(container, d, idx, ov) {
   upPRE.style.cssText = 'flex:1;opacity:' + (idx === 0 ? '.4' : '1');
   upPRE.disabled = (idx === 0);
   upPRE.addEventListener('click', function () {
-    if (idx <= 0) return;
-    var tmp = d.entregas[idx - 1];
-    d.entregas[idx - 1] = d.entregas[idx];
-    d.entregas[idx] = tmp;
+    /* PATCH_REORDENAR_REF_FRESCA v1 (11/09/2026) - mesma causa raiz do PATCH_ENTREGA_CONFIRMA_REF_FRESCA:
+       busca a copia mais recente do motorista pela placa antes de reordenar, pra nao operar num
+       objeto orfao que ja saiu de S.drivers por causa de uma sincronizacao de fundo. */
+    var placaAtualLM = normalizePlaca(d.placa);
+    var freshDLM = (S.drivers || []).find(function (x) { return normalizePlaca(x.placa) === placaAtualLM; }) ||
+                   (S.arquivo || []).find(function (x) { return normalizePlaca(x.placa) === placaAtualLM; });
+    var idxAtualPRE = idx;
+    if (freshDLM && freshDLM.entregas) {
+      var achadoPRE = -1;
+      for (var iPRE = 0; iPRE < freshDLM.entregas.length; iPRE++) {
+        if (slug((freshDLM.entregas[iPRE].cliente || '') + ' ' + (freshDLM.entregas[iPRE].destino || '')) === chave) { achadoPRE = iPRE; break; }
+      }
+      if (achadoPRE >= 0) { d = freshDLM; idxAtualPRE = achadoPRE; }
+    }
+    if (idxAtualPRE <= 0) return;
+    var tmp = d.entregas[idxAtualPRE - 1];
+    d.entregas[idxAtualPRE - 1] = d.entregas[idxAtualPRE];
+    d.entregas[idxAtualPRE] = tmp;
     touch(d);
     save();
     redesenharListaLM(container, d, ov);
@@ -5223,10 +5238,22 @@ function renderEntregaLM(container, d, idx, ov) {
   downPRE.style.cssText = 'flex:1;opacity:' + (idx === d.entregas.length - 1 ? '.4' : '1');
   downPRE.disabled = (idx === d.entregas.length - 1);
   downPRE.addEventListener('click', function () {
-    if (idx >= d.entregas.length - 1) return;
-    var tmp = d.entregas[idx + 1];
-    d.entregas[idx + 1] = d.entregas[idx];
-    d.entregas[idx] = tmp;
+    /* PATCH_REORDENAR_REF_FRESCA v1 (11/09/2026) - ver comentario no upPRE acima. */
+    var placaAtualLM = normalizePlaca(d.placa);
+    var freshDLM = (S.drivers || []).find(function (x) { return normalizePlaca(x.placa) === placaAtualLM; }) ||
+                   (S.arquivo || []).find(function (x) { return normalizePlaca(x.placa) === placaAtualLM; });
+    var idxAtualPRE = idx;
+    if (freshDLM && freshDLM.entregas) {
+      var achadoPRE = -1;
+      for (var iPRE = 0; iPRE < freshDLM.entregas.length; iPRE++) {
+        if (slug((freshDLM.entregas[iPRE].cliente || '') + ' ' + (freshDLM.entregas[iPRE].destino || '')) === chave) { achadoPRE = iPRE; break; }
+      }
+      if (achadoPRE >= 0) { d = freshDLM; idxAtualPRE = achadoPRE; }
+    }
+    if (idxAtualPRE >= d.entregas.length - 1) return;
+    var tmp = d.entregas[idxAtualPRE + 1];
+    d.entregas[idxAtualPRE + 1] = d.entregas[idxAtualPRE];
+    d.entregas[idxAtualPRE] = tmp;
     touch(d);
     save();
     redesenharListaLM(container, d, ov);
@@ -5684,7 +5711,19 @@ function renderEntregaLM(container, d, idx, ov) {
       if (typeof S !== "undefined" && S.drivers && S.drivers.length) {
         clearInterval(ivEsperaCC);
         setTimeout(function(){
-          try { if (typeof pararSync === "function") pararSync(); } catch (e2) {}
+          try {
+            if (typeof pararSync === "function") pararSync();
+            /* PATCH_LINK_MOTORISTA_PAUSA_SYNC_VISIBILITY v1 (11/09/2026) - o pararSync() acima so
+               cancela o polling por intervalo (20s). Tinha um furo: o listener de
+               visibilitychange (PATCH_SYNC_MAIS_FREQUENTE_E_AO_VOLTAR, 08/09/2026) e
+               INDEPENDENTE do syncTimer e continuava disparando puxarDoServidor() toda vez que a
+               tela do motorista saia e voltava da tela de bloqueio - reproduzido ao vivo em
+               11/09/2026 como a causa real de uma confirmacao de entrega se perder mesmo com
+               este patch (CONFIRMAR_CONFIAVEL) ja publicado. Essa flag global faz esse listener
+               tambem respeitar a pausa (so afeta o link do motorista - o painel do escritorio
+               nunca entra neste bloco, que e gated por ?mot= na URL). */
+            window.__syncPausadoLM = true;
+          } catch (e2) {}
         }, 4000);
       } else if (esperaCC > 150) {
         clearInterval(ivEsperaCC);
